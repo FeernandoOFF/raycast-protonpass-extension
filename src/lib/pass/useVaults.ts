@@ -1,15 +1,12 @@
-// useVaults.ts
-import { useEffect, useMemo, useState } from "react";
-import { getPassClient, type Vault } from "./client";
-import { getPreferenceValues } from "@raycast/api";
+import { useEffect, useState } from "react";
+import { useClient, Vault } from "./client";
+import { showToast, Toast } from "@raycast/api";
 
 export function useVaults() {
-  const { cliPath } = getPreferenceValues<Preferences>();
-  const client = useMemo(() => getPassClient(cliPath), [cliPath]);
+  const client = useClient();
 
   const [data, setData] = useState<Vault[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<Error | undefined>();
 
   useEffect(() => {
     const fetchVaults = async () => {
@@ -18,15 +15,25 @@ export function useVaults() {
       if (vaults) {
         try {
           setData(vaults);
-        } catch {
+        } catch(error: any) {
           setData(null);
-          setError(Error("Someting went wrong"));
+          showToast({
+            style: Toast.Style.Failure,
+            title: "Error",
+            message: error.message || "Something went wrong",
+          });
         }
       }
       setIsLoading(false);
     };
-    fetchVaults().catch(setError);
+    fetchVaults().catch((error)=> {
+      showToast({
+        style: Toast.Style.Failure,
+        title: "Error",
+        message: error.message || "Something went wrong",
+      });
+    });
   }, []);
 
-  return { vaults: data, isLoading, error };
+  return { vaults: data, isLoading };
 }

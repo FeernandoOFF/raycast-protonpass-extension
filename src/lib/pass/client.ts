@@ -1,7 +1,8 @@
 import { Item, ItemsJson, Vault, VaultsJson } from "./types";
 import { promisify } from "util";
 import { exec } from "child_process";
-import { Cache } from "@raycast/api";
+import { Cache, getPreferenceValues } from "@raycast/api";
+import { useMemo } from "react";
 
 
 const execAsync = promisify(exec);
@@ -99,12 +100,17 @@ export class Client {
   }
 }
 
+const { cliPath } = getPreferenceValues<Preferences>();
 // Single in-memory client
 let client: Client | null = null;
 
-export function getPassClient(cliPath: string) {
+function getPassClient() {
   if (!client) {
     client = new Client(cliPath);
   }
   return client;
+}
+
+export function useClient() {
+  return useMemo(() => getPassClient(), []);
 }

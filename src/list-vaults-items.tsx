@@ -1,22 +1,10 @@
-import { ActionPanel, Action, Icon, List, showToast, Toast } from "@raycast/api";
+import { ActionPanel, Action, Icon, List } from "@raycast/api";
 import { useVaultItems } from "./lib/pass/useVaultItems";
-import { useEffect } from "react";
 
 export default function ListVaultsItems(
   props: { vaultName: string },
 ) {
-  const { items, isLoading,error } = useVaultItems(props.vaultName);
-
-  useEffect(() => {
-    if (error) {
-      showToast({
-        style: Toast.Style.Failure,
-        title: "Error",
-        message: error.message,
-      });
-    }
-  }, [error]);
-
+  const { items, isLoading} = useVaultItems(props.vaultName);
 
   return (
     <List navigationTitle={`Items in ${props.vaultName ?? "All Vaults"}`} isLoading={isLoading}>
