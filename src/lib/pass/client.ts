@@ -24,14 +24,19 @@ export class Client {
     return this.parseVaults(cachedVaults);
   }
 
-  private async getCachedItems(vaultId: string): Promise<Item[] | null> {
-    const cachedItems = this.cache.get(`${Client.ITEMS_CACHE_KEY}:${vaultId}`);
+  private setCachedVaults(rawJson: string) {
+    this.cache.set(Client.VAULTS_CACHE_KEY, rawJson);
+  }
+
+  private async getCachedItems(vaultName: string): Promise<Item[] | null> {
+    const cachedItems = this.cache.get(`${Client.ITEMS_CACHE_KEY}:${vaultName}`);
     if (!cachedItems) return null;
     return await this.parseItems(cachedItems);
   }
 
-  private setCachedItems(rawJson: string, vaultId: string) {
-    this.cache.set(`${Client.ITEMS_CACHE_KEY}:${vaultId}`, rawJson);
+  private setCachedItems(rawJson: string, vaultName: string) {
+    console.log("Updating cache items for vault:", vaultName);
+    this.cache.set(`${Client.ITEMS_CACHE_KEY}:${vaultName}`, rawJson);
   }
 
   // -- CLI Operations
@@ -42,31 +47,51 @@ export class Client {
   }
 
   async getAllVaults(): Promise<Vault[]> {
-    const cachedVaults = this.getCachedVaults();
-    if (cachedVaults) return cachedVaults;
+    const fetchAndRefreshVaults = async () => {
+      const { stdout, stderr } = await execAsync(`${this.cliPath} vault list --output=json`);
+      if (stderr) throw new Error(`Error fetching vaults: ${stderr}`);
+      this.setCachedVaults(stdout);
+      return stdout;
+    };
 
-    const { stdout } = await execAsync(`${this.cliPath} vault list --output=json`);
-    this.cache.set(Client.VAULTS_CACHE_KEY, stdout);
-    return this.parseVaults(stdout);
+    const cachedVaults = this.getCachedVaults();
+    if (cachedVaults) {
+      fetchAndRefreshVaults(); //Refresh cache in the background
+      return cachedVaults;
+    }
+    const vaultsJson = await fetchAndRefreshVaults();
+    return this.parseVaults(vaultsJson);
   }
 
   async getItems(vaultName: string | null): Promise<Item[]> {
+
+    const fetchAndRefreshItems = async (vaultName: string) => {
+      const { stdout, stderr } = await execAsync(`${this.cliPath} item list "${vaultName}" --output=json`);
+      if (stderr) throw new Error(`Error fetching items: ${stderr}`);
+      this.setCachedItems(stdout, vaultName);
+      return stdout;
+    };
+
     if (vaultName) {
       const cachedItems = await this.getCachedItems(vaultName);
-      if (cachedItems != null) return cachedItems;
+      if (cachedItems != null) {
+        fetchAndRefreshItems(vaultName); // Refresh cache in the background
+        return cachedItems;
+      }
+      const itemsJson = await fetchAndRefreshItems(vaultName);
+      return this.parseItems(itemsJson);
 
-      const { stdout} = await execAsync(`${this.cliPath} item list "${vaultName}" --output=json`);
-      this.setCachedItems(stdout, vaultName);
-      return this.parseItems(stdout);
     } else {
       const vaults = await this.getAllVaults();
       const fetchPromises = vaults.map(async (vault) => {
         const cachedItems = await this.getCachedItems(vault.id);
-        if(cachedItems != null) return cachedItems
+        if (cachedItems != null) {
+          fetchAndRefreshItems(vault.title);
+          return cachedItems;
+        }
 
-        const { stdout } = await execAsync(`${this.cliPath} item list "${vault.title}" --output=json`);
-        this.setCachedItems(stdout, vault.id);
-        return this.parseItems(stdout);
+        const itemsJson = await fetchAndRefreshItems(vault.title);
+        return this.parseItems(itemsJson);
       });
       const results = await Promise.all(fetchPromises);
       return results.flat();
