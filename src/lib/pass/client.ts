@@ -4,7 +4,6 @@ import { exec } from "child_process";
 import { Cache, getPreferenceValues } from "@raycast/api";
 import { useMemo } from "react";
 
-
 const execAsync = promisify(exec);
 
 export type { Item, Vault };
@@ -35,7 +34,6 @@ export class Client {
   }
 
   private setCachedItems(rawJson: string, vaultName: string) {
-    console.log("Updating cache items for vault:", vaultName);
     this.cache.set(`${Client.ITEMS_CACHE_KEY}:${vaultName}`, rawJson);
   }
 
@@ -59,12 +57,12 @@ export class Client {
       fetchAndRefreshVaults(); //Refresh cache in the background
       return cachedVaults;
     }
+
     const vaultsJson = await fetchAndRefreshVaults();
     return this.parseVaults(vaultsJson);
   }
 
   async getItems(vaultName: string | null): Promise<Item[]> {
-
     const fetchAndRefreshItems = async (vaultName: string) => {
       const { stdout, stderr } = await execAsync(`${this.cliPath} item list "${vaultName}" --output=json`);
       if (stderr) throw new Error(`Error fetching items: ${stderr}`);
@@ -80,11 +78,10 @@ export class Client {
       }
       const itemsJson = await fetchAndRefreshItems(vaultName);
       return this.parseItems(itemsJson);
-
     } else {
       const vaults = await this.getAllVaults();
       const fetchPromises = vaults.map(async (vault) => {
-        const cachedItems = await this.getCachedItems(vault.id);
+        const cachedItems = await this.getCachedItems(vault.title);
         if (cachedItems != null) {
           fetchAndRefreshItems(vault.title);
           return cachedItems;
@@ -110,12 +107,14 @@ export class Client {
     const parsed = JSON.parse(rawJson) as ItemsJson;
     const vaultName = await this.getVaultName(parsed.items[0].vault_id);
 
-    const items: Item[] = parsed.items.map((it) => {
+    const items: Item[] = parsed.items
+      .map((it) => {
       return {
         id: it.id,
         title: it.content.title,
         vaultId: it.vault_id,
         urls: it.content.content.Login?.urls,
+        state: it.state,
         vaultTitle: vaultName || undefined,
         email: it.content.content.Login?.email,
         password: it.content.content.Login?.password,

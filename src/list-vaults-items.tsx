@@ -1,14 +1,25 @@
-import { ActionPanel, Action, Icon, List } from "@raycast/api";
+import { Action, ActionPanel, Icon, List } from "@raycast/api";
 import { useVaultItems } from "./lib/pass/useVaultItems";
+import { useMemo, useState } from "react";
 
 export default function ListVaultsItems(
   props: { vaultName: string },
 ) {
   const { items, isLoading} = useVaultItems(props.vaultName);
+  const [filter, setFilter] = useState<string>("Active");
+
+  const filteredItems = useMemo(()=> items?.filter(item => item.state === filter), [items, filter])
 
   return (
-    <List navigationTitle={`Items in ${props.vaultName ?? "All Vaults"}`} isLoading={isLoading}>
-      {items != null && items.map((item) => {
+    <List navigationTitle={`Items in ${props.vaultName ?? "All Vaults"}`} isLoading={isLoading}
+          searchBarAccessory={
+      <List.Dropdown tooltip={"Filter items by state"} onChange={setFilter}>
+        <List.Dropdown.Item title="Active" value="Active" />
+        <List.Dropdown.Item title="Trashed" value="Trashed" />
+      </List.Dropdown>
+            
+    }>
+      {filteredItems != null && filteredItems.map((item) => {
         const accessories: List.Item.Accessory[] = [];
         if (item.urls && item.urls.length > 0) {
           try {

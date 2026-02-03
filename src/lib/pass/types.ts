@@ -11,6 +11,7 @@ export type Item = {
   vaultId: string;
   vaultTitle?: string;
   urls?: string[];
+  state: "Active" | "Trashed";
 };
 
 export type VaultsJson = { vaults: { name: string; vault_id: string }[] };
@@ -18,6 +19,7 @@ export type ItemsJson = {
   items: {
     id: string;
     vault_id: string;
+    state: "Active" | "Trashed";
     content: {
       title: string;
       content: {
