@@ -1,19 +1,26 @@
-import { ActionPanel, Action, Icon, List, getPreferenceValues } from "@raycast/api";
+import { ActionPanel, Action, Icon, List, showToast, Toast } from "@raycast/api";
 import { useVaultItems } from "./lib/pass/useVaultItems";
-
-interface Preferences {
-  cliPath: string;
-}
+import { useEffect } from "react";
 
 export default function ListVaultsItems(
   props: { vaultName: string },
 ) {
-  const { cliPath } = getPreferenceValues<Preferences>();
-  const { items, isLoading } = useVaultItems(cliPath, props.vaultName);
+  const { items, isLoading,error } = useVaultItems(props.vaultName);
+
+  useEffect(() => {
+    if (error) {
+      showToast({
+        style: Toast.Style.Failure,
+        title: "Error",
+        message: error.message,
+      });
+    }
+  }, [error]);
+
 
   return (
     <List navigationTitle={`Items in ${props.vaultName ?? "All Vaults"}`} isLoading={isLoading}>
-      {items.map((item) => {
+      {items != null && items.map((item) => {
         const accessories: List.Item.Accessory[] = [];
         if (item.urls && item.urls.length > 0) {
           try {
@@ -38,15 +45,28 @@ export default function ListVaultsItems(
               <ActionPanel>
                 <ActionPanel.Section>
                   {item.email && (
-                    <Action.CopyToClipboard title="Copy Email" content={item.email} shortcut={{ modifiers: ["cmd"], key: "c" }} />
+                    <Action.CopyToClipboard
+                      title="Copy Email"
+                      content={item.email}
+                      shortcut={{ modifiers: ["cmd"], key: "c" }}
+                    />
                   )}
                   {item.password && (
-                    <Action.CopyToClipboard title="Copy Password" content={item.password} shortcut={{ modifiers: ["cmd", "shift"], key: "c" }} />
+                    <Action.CopyToClipboard
+                      title="Copy Password"
+                      content={item.password}
+                      shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+                    />
                   )}
                 </ActionPanel.Section>
                 <ActionPanel.Section>
                   {item.urls?.map((url, index) => (
-                    <Action.OpenInBrowser key={index} title={`Open ${url}`} url={url} />
+                    <Action.OpenInBrowser
+                      key={index}
+                      title={`Open ${url}`}
+                      url={url}
+                      shortcut={{ modifiers: ["cmd", "shift"], key: "o" }}
+                    />
                   ))}
                 </ActionPanel.Section>
               </ActionPanel>
