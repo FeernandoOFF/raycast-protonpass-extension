@@ -1,78 +1,114 @@
-import { Action, ActionPanel, Icon, List } from "@raycast/api";
+import { Action, ActionPanel, Keyboard, List } from "@raycast/api";
 import { useVaultItems } from "./lib/pass/useVaultItems";
 import { useMemo, useState } from "react";
+import { useVaults } from "./lib/pass/useVaults";
 
 export default function ListVaultsItems(
   props: { vaultName: string },
 ) {
+  const { vaults } = useVaults();
   const { items, isLoading} = useVaultItems(props.vaultName);
   const [filter, setFilter] = useState<string>("Active");
 
-  const filteredItems = useMemo(()=> items?.filter(item => item.state === filter), [items, filter])
+  const filteredItems = useMemo(()=> {
+    if(filter == "All") return items;
+    else if(filter == "Active" || filter == "Trashed") {
+      // Filter state
+      return items?.filter((item) => item.state === filter);
+    } else {
+      // Filter vault
+      return items?.filter((item) => item.vaultId === filter);
+    }
+
+  }, [items, filter])
 
   return (
-    <List navigationTitle={`Items in ${props.vaultName ?? "All Vaults"}`} isLoading={isLoading}
-          searchBarAccessory={
-      <List.Dropdown tooltip={"Filter items by state"} onChange={setFilter}>
-        <List.Dropdown.Item title="Active" value="Active" />
-        <List.Dropdown.Item title="Trashed" value="Trashed" />
-      </List.Dropdown>
-            
-    }>
-      {filteredItems != null && filteredItems.map((item) => {
-        const accessories: List.Item.Accessory[] = [];
-        if (item.urls && item.urls.length > 0) {
-          try {
-            const url = new URL(item.urls[0]);
-            accessories.push({ text: url.hostname, tooltip: item.urls[0] });
-          } catch {
-            accessories.push({ text: item.urls[0], tooltip: item.urls[0] });
-          }
-        }
-
-        if (item.vaultTitle) {
-          accessories.push({ text: item.vaultTitle, tooltip: "Vault" });
-        }
-
-        return (
-          <List.Item
-            key={item.id}
-            icon={Icon.Lock}
-            title={item.title}
-            accessories={accessories}
-            actions={
-              <ActionPanel>
-                <ActionPanel.Section>
-                  {item.email && (
-                    <Action.CopyToClipboard
-                      title="Copy Email"
-                      content={item.email}
-                      shortcut={{ modifiers: ["cmd"], key: "c" }}
-                    />
-                  )}
-                  {item.password && (
-                    <Action.CopyToClipboard
-                      title="Copy Password"
-                      content={item.password}
-                      shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
-                    />
-                  )}
-                </ActionPanel.Section>
-                <ActionPanel.Section>
-                  {item.urls?.map((url, index) => (
-                    <Action.OpenInBrowser
-                      key={index}
-                      title={`Open ${url}`}
-                      url={url}
-                      shortcut={{ modifiers: ["cmd", "shift"], key: "o" }}
-                    />
-                  ))}
-                </ActionPanel.Section>
-              </ActionPanel>
+    <List
+      navigationTitle={`Items in ${props.vaultName ?? "All Vaults"}`}
+      isLoading={isLoading}
+      searchBarAccessory={
+        <List.Dropdown tooltip={"Filter items by state"} onChange={setFilter} value={filter}>
+          <List.Dropdown.Item title="All" value="All" />
+          <List.Dropdown.Section title="Status">
+            <List.Dropdown.Item title="Active" value="Active" />
+            <List.Dropdown.Item title="Trashed" value="Trashed" />
+          </List.Dropdown.Section>
+          <List.Dropdown.Section title="Vaults">
+            {vaults?.map((vault) => {
+              return <List.Dropdown.Item title={vault.title} value={vault.id} key={vault.id} />;
+            })}
+          </List.Dropdown.Section>
+        </List.Dropdown>
+      }
+    >
+      {filteredItems != null &&
+        filteredItems.map((item) => {
+          const accessories: List.Item.Accessory[] = [];
+          if (item.type == "Login" && item.urls && item.urls.length > 0) {
+            try {
+              const url = new URL(item.urls[0]);
+              accessories.push({ text: url.hostname, tooltip: item.urls[0] });
+            } catch {
+              accessories.push({ text: item.urls[0], tooltip: item.urls[0] });
             }
-          />
-        );
-      })}
+          }
+
+          if (item.vaultTitle) {
+            accessories.push({ text: item.vaultTitle, tooltip: "Vault" });
+          }
+
+          return (
+            <List.Item
+              key={item.id}
+              icon={item.icon}
+              title={item.title}
+              accessories={accessories}
+              actions={
+                <ActionPanel>
+                  <ActionPanel.Section>
+                    {item.clipboardElements &&
+                      item.clipboardElements.map((element, index) => {
+                        if (!element) return;
+                        const shortcut: Keyboard.Shortcut | undefined =
+                          index == 0
+                            ? { modifiers: ["cmd"], key: "c" }
+                            : index == 1
+                              ? { modifiers: ["cmd", "shift"], key: "c" }
+                              : index == 2
+                                ? { modifiers: ["cmd", "shift", "alt"], key: "c" }
+                                : index == 3
+                                  ? { modifiers: ["cmd", "shift", "alt", "ctrl"], key: "c" }
+                                  : undefined;
+
+                        return (
+                          <Action.CopyToClipboard
+                            key={index}
+                            title={`Copy ${element.title}`}
+                            content={element.content}
+                            concealed={element.confidential}
+                            shortcut={shortcut}
+                          />
+                        );
+                      })}
+                  </ActionPanel.Section>
+                  <ActionPanel.Section>
+                    {item.type == "Login" &&
+                      item.urls?.map((url, index) => {
+                        return (
+                          <Action.OpenInBrowser
+                            key={index}
+                            title={`Open ${url}`}
+                            url={url}
+                            shortcut={{ modifiers: ["cmd", "shift"], key: "o" }}
+                          />
+                        );
+                      })}
+                  </ActionPanel.Section>
+                </ActionPanel>
+              }
+            />
+          );
+        })}
     </List>
   );
 }

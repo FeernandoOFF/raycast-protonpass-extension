@@ -105,19 +105,87 @@ export class Client {
 
   private async parseItems(rawJson: string): Promise<Item[]> {
     const parsed = JSON.parse(rawJson) as ItemsJson;
+    if (!parsed.items || parsed.items.length === 0) return [];
     const vaultName = await this.getVaultName(parsed.items[0].vault_id);
 
-    const items: Item[] = parsed.items
-      .map((it) => {
+    const items: Item[] = parsed.items.map((it) => {
+      const content = it.content.content;
+
+      if (content.Login) {
+        return {
+          id: it.id,
+          title: it.content.title,
+          vaultId: it.vault_id,
+          state: it.state,
+          vaultTitle: vaultName || undefined,
+          type: "Login",
+          email: content.Login.email,
+          username: content.Login.username,
+          password: content.Login.password,
+          urls: content.Login.urls,
+        };
+      }
+
+      if (content.Identity) {
+        return {
+          id: it.id,
+          title: it.content.title,
+          vaultId: it.vault_id,
+          state: it.state,
+          vaultTitle: vaultName || undefined,
+          type: "Identity",
+          full_name: content.Identity.full_name,
+          email: content.Identity.email,
+          phone_number: content.Identity.phone_number,
+          first_name: content.Identity.first_name,
+          middle_name: content.Identity.middle_name,
+          last_name: content.Identity.last_name,
+          birthdate: content.Identity.birthdate,
+          gender: content.Identity.gender,
+          extra_personal_details: content.Identity.extra_personal_details,
+          organization: content.Identity.organization,
+          street_address: content.Identity.street_address,
+          zip_or_postal_code: content.Identity.zip_or_postal_code,
+        };
+      }
+
+      if (content.CreditCard) {
+        return {
+          id: it.id,
+          title: it.content.title,
+          vaultId: it.vault_id,
+          state: it.state,
+          vaultTitle: vaultName || undefined,
+          type: "CreditCard",
+          cardholder_name: content.CreditCard.cardholder_name,
+          card_type: content.CreditCard.card_type,
+          number: content.CreditCard.number,
+          verification_number: content.CreditCard.verification_number,
+          expiration_date: content.CreditCard.expiration_date,
+        };
+      }
+
+      if (content.SshKey) {
+        return {
+          id: it.id,
+          title: it.content.title,
+          vaultId: it.vault_id,
+          state: it.state,
+          vaultTitle: vaultName || undefined,
+          type: "SSHKey",
+          private_key: content.SshKey.private_key,
+          public_key: content.SshKey.public_key,
+        };
+      }
+
+      // Fallback: treat as Login with basic fields to avoid crashes
       return {
         id: it.id,
         title: it.content.title,
         vaultId: it.vault_id,
-        urls: it.content.content.Login?.urls,
         state: it.state,
         vaultTitle: vaultName || undefined,
-        email: it.content.content.Login?.email,
-        password: it.content.content.Login?.password,
+        type: "Login",
       };
     });
     return items;
