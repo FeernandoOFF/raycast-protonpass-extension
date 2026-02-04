@@ -8,7 +8,11 @@ export function useVaultItems(vaultName: string | null) {
   const client = useClient();
   const { activeOrigin } = useActiveTab();
 
-  const { data: rawItems, isLoading, error } = usePromise(async () => {
+  const {
+    data: rawItems,
+    isLoading,
+    error,
+  } = usePromise(async () => {
     return await client.getItems(vaultName);
   });
 
@@ -81,8 +85,7 @@ export function useVaultItems(vaultName: string | null) {
   }, [rawItems, activeOrigin]);
 
   useEffect(() => {
-    if (error)
-      showToast(Toast.Style.Failure, "Error", error.message || "Something went wrong");
+    if (error) showToast(Toast.Style.Failure, "Error", error.message || "Something went wrong");
   }, [error]);
 
   return { items, isLoading };

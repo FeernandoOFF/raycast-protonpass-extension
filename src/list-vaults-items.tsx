@@ -8,17 +8,16 @@ export default function ListVaultsItems(props: { vaultName: string }) {
   const { items, isLoading } = useVaultItems(props.vaultName);
   const [filter, setFilter] = useState<string>("Active");
 
-  const filteredItems = useMemo(()=> {
-    if(filter == "All") return items;
-    else if(filter == "Active" || filter == "Trashed") {
+  const filteredItems = useMemo(() => {
+    if (filter == "All") return items;
+    else if (filter == "Active" || filter == "Trashed") {
       // Filter state
       return items?.filter((item) => item.state === filter);
     } else {
       // Filter vault
       return items?.filter((item) => item.vaultId === filter);
     }
-
-  }, [items, filter])
+  }, [items, filter]);
 
   return (
     <List
@@ -52,7 +51,7 @@ export default function ListVaultsItems(props: { vaultName: string }) {
           }
 
           if (item.isActiveOrigin) {
-            accessories.push({ icon: Icon.Globe, tooltip: "Active website", });
+            accessories.push({ icon: Icon.Globe, tooltip: "Active website" });
           }
 
           if (item.vaultTitle) {
