@@ -28,8 +28,8 @@
     {
       "name": "list-vaults-items",
       "title": "List Vaults Items",
-      "subtitle": "Lists your proton pass items ",
-      "description": "",
+      "subtitle": "",
+      "description": "Lists your proton pass items",
       "mode": "view"
     },
     {
@@ -37,6 +37,13 @@
       "title": "List Vaults",
       "description": "",
       "mode": "view"
+    },
+    {
+      "name": "sync-vault",
+      "title": "Sync Proton Vault",
+      "description": "Sync Proton Pass Vault with Raycast Cache",
+      "mode": "no-view",
+      "interval": "10m"
     }
   ],
   "dependencies": {

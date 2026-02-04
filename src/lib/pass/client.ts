@@ -44,7 +44,7 @@ export class Client {
     return vaults.find((v) => v.id === vaultId)?.title ?? null;
   }
 
-  async getAllVaults(): Promise<Vault[]> {
+  async getAllVaults(forceRefresh: boolean = false): Promise<Vault[]> {
     const fetchAndRefreshVaults = async () => {
       const { stdout, stderr } = await execAsync(`${this.cliPath} vault list --output=json`);
       if (stderr) throw new Error(`Error fetching vaults: ${stderr}`);
@@ -53,7 +53,7 @@ export class Client {
     };
 
     const cachedVaults = this.getCachedVaults();
-    if (cachedVaults) {
+    if (cachedVaults && !forceRefresh) {
       fetchAndRefreshVaults(); //Refresh cache in the background
       return cachedVaults;
     }
@@ -62,7 +62,7 @@ export class Client {
     return this.parseVaults(vaultsJson);
   }
 
-  async getItems(vaultName: string | null): Promise<Item[]> {
+  async getItems(vaultName: string | null, forceRefresh: boolean = false): Promise<Item[]> {
     const fetchAndRefreshItems = async (vaultName: string) => {
       const { stdout, stderr } = await execAsync(`${this.cliPath} item list "${vaultName}" --output=json`);
       if (stderr) throw new Error(`Error fetching items: ${stderr}`);
@@ -72,7 +72,7 @@ export class Client {
 
     if (vaultName) {
       const cachedItems = await this.getCachedItems(vaultName);
-      if (cachedItems != null) {
+      if (cachedItems != null && !forceRefresh) {
         fetchAndRefreshItems(vaultName); // Refresh cache in the background
         return cachedItems;
       }
@@ -82,7 +82,7 @@ export class Client {
       const vaults = await this.getAllVaults();
       const fetchPromises = vaults.map(async (vault) => {
         const cachedItems = await this.getCachedItems(vault.title);
-        if (cachedItems != null) {
+        if (cachedItems != null && !forceRefresh) {
           fetchAndRefreshItems(vault.title);
           return cachedItems;
         }
@@ -196,7 +196,7 @@ const { cliPath } = getPreferenceValues<Preferences>();
 // Single in-memory client
 let client: Client | null = null;
 
-function getPassClient() {
+export function getPassClient() {
   if (!client) {
     client = new Client(cliPath);
   }
