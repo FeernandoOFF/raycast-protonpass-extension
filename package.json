@@ -28,14 +28,14 @@
     {
       "name": "list-vaults-items",
       "title": "List Vaults Items",
-      "subtitle": "",
+      "subtitle": "List all vault items",
       "description": "Lists your proton pass items",
       "mode": "view"
     },
     {
       "name": "list-vaults",
       "title": "List Vaults",
-      "description": "",
+      "description": "List all vaults and access their items",
       "mode": "view"
     },
     {
