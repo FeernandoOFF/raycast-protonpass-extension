@@ -7,7 +7,7 @@ export default function ListVaults() {
   const { push } = useNavigation();
 
   return (
-    <List isLoading={isLoading}>
+    <List searchBarPlaceholder="Search vaults..." isLoading={isLoading}>
       {vaults != null &&
         vaults.map((vault) => (
           <List.Item
@@ -17,7 +17,7 @@ export default function ListVaults() {
             accessories={[{ text: "Vault" }]}
             actions={
               <ActionPanel>
-                <Action title="Push" onAction={() => push(<ListVaultsItems vaultName={vault.title} />)} />
+                <Action title="Open Vault" onAction={() => push(<ListVaultsItems vaultName={vault.title} />)} />
               </ActionPanel>
             }
           />

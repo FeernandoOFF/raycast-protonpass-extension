@@ -21,18 +21,19 @@ export default function ListVaultsItems(props: { vaultName: string }) {
 
   return (
     <List
+      searchBarPlaceholder={`Search items in ${props.vaultName ?? "All Vaults"}...`}
       navigationTitle={`Items in ${props.vaultName ?? "All Vaults"}`}
       isLoading={isLoading}
       searchBarAccessory={
         <List.Dropdown tooltip={"Filter items by state"} onChange={setFilter} value={filter}>
-          <List.Dropdown.Item title="All" value="All" />
+          <List.Dropdown.Item title="All" value="All" icon={Icon.AppWindowGrid3x3} />
           <List.Dropdown.Section title="Status">
-            <List.Dropdown.Item title="Active" value="Active" />
-            <List.Dropdown.Item title="Trashed" value="Trashed" />
+            <List.Dropdown.Item title="Active" value="Active" icon={Icon.CheckCircle} />
+            <List.Dropdown.Item title="Trashed" value="Trashed" icon={Icon.Trash} />
           </List.Dropdown.Section>
           <List.Dropdown.Section title="Vaults">
             {vaults?.map((vault) => {
-              return <List.Dropdown.Item title={vault.title} value={vault.id} key={vault.id} />;
+              return <List.Dropdown.Item title={vault.title} value={vault.id} key={vault.id} icon={Icon.Folder} />;
             })}
           </List.Dropdown.Section>
         </List.Dropdown>
