@@ -1,13 +1,15 @@
 import { Action, ActionPanel, Icon, List, useNavigation } from "@raycast/api";
 import ListVaultsItems from "./list-vaults-items";
 import { useVaults } from "./lib/pass/useVaults";
+import { ErrorView } from "./lib/components/error";
 
 export default function ListVaults() {
-  const { vaults, isLoading } = useVaults();
+  const { vaults, isLoading, error } = useVaults();
   const { push } = useNavigation();
 
   return (
     <List searchBarPlaceholder="Search vaults..." isLoading={isLoading}>
+      {error != null && <ErrorView error={error} />}
       {vaults != null &&
         vaults.map((vault) => (
           <List.Item

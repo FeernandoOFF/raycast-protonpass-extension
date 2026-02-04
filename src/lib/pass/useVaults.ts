@@ -15,5 +15,5 @@ export function useVaults() {
     if (error) showToast(Toast.Style.Failure, "Error", error.message || "Something went wrong");
   }, [error]);
 
-  return { vaults: data, isLoading };
+  return { vaults: data, isLoading, error };
 }

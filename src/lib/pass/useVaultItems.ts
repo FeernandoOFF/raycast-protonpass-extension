@@ -88,7 +88,7 @@ export function useVaultItems(vaultName: string | null) {
     if (error) showToast(Toast.Style.Failure, "Error", error.message || "Something went wrong");
   }, [error]);
 
-  return { items, isLoading };
+  return { items, isLoading, error };
 }
 
 // -- Utilities

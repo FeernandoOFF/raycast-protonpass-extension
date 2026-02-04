@@ -2,10 +2,11 @@ import { Action, ActionPanel, Icon, Keyboard, List } from "@raycast/api";
 import { useVaultItems } from "./lib/pass/useVaultItems";
 import { useMemo, useState } from "react";
 import { useVaults } from "./lib/pass/useVaults";
+import { ErrorView } from "./lib/components/error";
 
 export default function ListVaultsItems(props: { vaultName: string }) {
   const { vaults } = useVaults();
-  const { items, isLoading } = useVaultItems(props.vaultName);
+  const { items, isLoading, error } = useVaultItems(props.vaultName);
   const [filter, setFilter] = useState<string>("Active");
 
   const filteredItems = useMemo(() => {
@@ -39,6 +40,7 @@ export default function ListVaultsItems(props: { vaultName: string }) {
         </List.Dropdown>
       }
     >
+      {error != null && <ErrorView error={error} />}
       {filteredItems != null &&
         filteredItems.map((item) => {
           const accessories: List.Item.Accessory[] = [];
