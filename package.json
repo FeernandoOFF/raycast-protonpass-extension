@@ -1,8 +1,8 @@
 {
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "proton-pass-client",
-  "title": "Proton Pass Client",
-  "description": "A Proton pass client using their CLI, fully local and private",
+  "title": "Proton Pass",
+  "description": "Access your Proton Pass vaults and items",
   "icon": "extension-icon.png",
   "author": "FeernandoOFF",
   "preferences": [
@@ -16,8 +16,7 @@
     }
   ],
   "platforms": [
-    "macOS",
-    "Windows"
+    "macOS"
   ],
   "categories": [
     "Security",
@@ -27,14 +26,14 @@
   "commands": [
     {
       "name": "list-vaults-items",
-      "title": "List Vaults Items",
-      "subtitle": "List all vault items",
+      "title": "Search Vault Items",
+      "subtitle": "Search and list all vault items",
       "description": "Lists your proton pass items",
       "mode": "view"
     },
     {
       "name": "list-vaults",
-      "title": "List Vaults",
+      "title": "Search Vaults",
       "description": "List all vaults and access their items",
       "mode": "view"
     },
