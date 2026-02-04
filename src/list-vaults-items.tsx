@@ -40,7 +40,7 @@ export default function ListVaultsItems(props: { vaultName: string }) {
         </List.Dropdown>
       }
     >
-      {error != null && <ErrorView error={error} />}
+      {error != null && <ErrorView />}
       {filteredItems != null &&
         filteredItems.map((item) => {
           const accessories: List.Item.Accessory[] = [];

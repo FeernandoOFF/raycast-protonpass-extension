@@ -1,6 +1,6 @@
 import { Icon, List } from "@raycast/api";
 
-export const ErrorView = ({ error }: { error: Error }) => {
+export const ErrorView = () => {
   return (
     <List.EmptyView
       title="Error loading vaults"

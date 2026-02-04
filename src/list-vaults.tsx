@@ -9,7 +9,7 @@ export default function ListVaults() {
 
   return (
     <List searchBarPlaceholder="Search vaults..." isLoading={isLoading}>
-      {error != null && <ErrorView error={error} />}
+      {error != null && <ErrorView />}
       {vaults != null &&
         vaults.map((vault) => (
           <List.Item
