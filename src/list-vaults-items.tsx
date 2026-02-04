@@ -1,13 +1,11 @@
-import { Action, ActionPanel, Keyboard, List } from "@raycast/api";
+import { Action, ActionPanel, Icon, Keyboard, List } from "@raycast/api";
 import { useVaultItems } from "./lib/pass/useVaultItems";
 import { useMemo, useState } from "react";
 import { useVaults } from "./lib/pass/useVaults";
 
-export default function ListVaultsItems(
-  props: { vaultName: string },
-) {
+export default function ListVaultsItems(props: { vaultName: string }) {
   const { vaults } = useVaults();
-  const { items, isLoading} = useVaultItems(props.vaultName);
+  const { items, isLoading } = useVaultItems(props.vaultName);
   const [filter, setFilter] = useState<string>("Active");
 
   const filteredItems = useMemo(()=> {
@@ -51,6 +49,10 @@ export default function ListVaultsItems(
             } catch {
               accessories.push({ text: item.urls[0], tooltip: item.urls[0] });
             }
+          }
+
+          if (item.isActiveOrigin) {
+            accessories.push({ icon: Icon.Globe, tooltip: "Active website", });
           }
 
           if (item.vaultTitle) {
