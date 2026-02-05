@@ -1,4 +1,4 @@
-/// <reference path="../../../raycast-env.d.ts" />
+import "../../../raycast-env.d.ts";
 import { Item, ItemsJson, Vault, VaultsJson } from "./types";
 import { promisify } from "util";
 import { execFile } from "child_process";
