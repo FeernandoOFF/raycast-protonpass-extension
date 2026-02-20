@@ -1,10 +1,16 @@
 import { usePromise } from "@raycast/utils";
-import { BrowserExtension } from "@raycast/api";
+import { BrowserExtension, environment } from "@raycast/api";
 
 export function useActiveTab() {
   const { data, isLoading } = usePromise(async () => {
-    const tabs = await BrowserExtension.getTabs();
-    return tabs.find((tab) => tab.active);
+    if (!environment.canAccess(BrowserExtension)) return undefined;
+
+    try {
+      const tabs = await BrowserExtension.getTabs();
+      return tabs.find((tab) => tab.active);
+    } catch {
+      return undefined;
+    }
   });
 
   return { activeTab: data, activeOrigin: originOf(data?.url), isLoading };
