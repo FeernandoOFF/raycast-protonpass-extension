@@ -1,5 +1,7 @@
 # Proton Pass Client Changelog
 
+## [Bugfixes] - {PR_MERGE_DATE}
+
 ## [Fix & Improvements] - {PR_MERGE_DATE}
 
 - Fixed RangeError for large vaults by increasing buffer size to 50MB
