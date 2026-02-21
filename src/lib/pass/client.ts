@@ -44,7 +44,11 @@ export class Client {
 
   private async execCli(args: string[], options?: { maxBuffer?: number }) {
     try {
-      return await execFileAsync(this.cliPath, args, options);
+      const { stdout, stderr } = await execFileAsync(this.cliPath, args, options);
+      return {
+        stdout: typeof stdout === "string" ? stdout : stdout.toString("utf8"),
+        stderr: typeof stderr === "string" ? stderr : stderr.toString("utf8"),
+      };
     } catch (error) {
       throw mapCliError(error);
     }
@@ -251,7 +255,7 @@ const mapCliError = (error: unknown): PassCliError => {
     return new PassCliError("not_installed", "Proton Pass CLI is not installed or not found on disk.");
   }
 
-  if (has(/not logged in|not authenticated|login required|please login|no session|there is no session/i)) {
+  if (has(/not logged in|authenticated|not authenticated|login required|please login|no session|there is no session/i)) {
     return new PassCliError("not_authenticated", "You are not logged in to Proton Pass CLI.");
   }
 
@@ -263,7 +267,7 @@ const mapCliError = (error: unknown): PassCliError => {
     return new PassCliError("timeout", "Proton Pass CLI request timed out.");
   }
 
-  if (has(/network|connection|ECONN|ENOTFOUND|EAI_AGAIN/i)) {
+  if (has(/network|connection|ECONN|ENOTFOUND|EAI_AGAIN|addresses/i)) {
     return new PassCliError("network_error", "Network error while contacting Proton Pass.");
   }
 
@@ -278,11 +282,7 @@ const extractCliErrorDetails = (error: unknown): { message?: string; stderr?: st
   const message = "message" in error && typeof error.message === "string" ? error.message : undefined;
   const stderrRaw = "stderr" in error ? (error.stderr as unknown) : undefined;
   const stderr =
-    typeof stderrRaw === "string"
-      ? stderrRaw
-      : Buffer.isBuffer(stderrRaw)
-        ? stderrRaw.toString("utf8")
-        : undefined;
+    typeof stderrRaw === "string" ? stderrRaw : Buffer.isBuffer(stderrRaw) ? stderrRaw.toString("utf8") : undefined;
   const code = "code" in error && typeof error.code === "string" ? error.code : undefined;
 
   return { message, stderr, code };

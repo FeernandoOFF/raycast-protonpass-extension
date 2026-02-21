@@ -1,7 +1,18 @@
 import { getPassClient } from "./lib/pass/client";
+import { isPassCliError } from "./lib/pass/types";
 
 export default async function Command() {
-  const client = getPassClient();
-  await client.getAllVaults(true);
-  await client.getItems(null, true);
+  try {
+    const client = getPassClient();
+    await client.getAllVaults(true);
+    await client.getItems(null, true);
+  } catch (error) {
+    const passError = isPassCliError(error);
+
+    if (passError) {
+      return;
+    }
+
+    throw passError;
+  }
 }

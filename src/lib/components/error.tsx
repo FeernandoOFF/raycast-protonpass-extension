@@ -111,11 +111,7 @@ export function ErrorListView({ error, onRetry, contextTitle }: ErrorViewProps) 
   );
 }
 
-export function renderErrorView(
-  error: unknown,
-  onRetry?: () => void,
-  contextTitle?: string,
-): JSX.Element | null {
+export function renderErrorView(error: unknown, onRetry?: () => void, contextTitle?: string): JSX.Element | null {
   if (!error) return null;
   return <ErrorListView error={error} onRetry={onRetry} contextTitle={contextTitle} />;
 }
