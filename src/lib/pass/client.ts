@@ -119,7 +119,7 @@ export class Client {
 
   private parseVaults(rawJson: string): Vault[] {
     const parsed = JSON.parse(rawJson) as VaultsJson;
-    const vaults = parsed.vaults.map((v) => ({ title: v.name, id: v.vault_id }));
+    const vaults = parsed.vaults.map((v) => ({ title: v.name, id: v.vault_id, shareId: v.share_id }));
     return vaults;
   }
 
@@ -134,6 +134,7 @@ export class Client {
       if (content.Login) {
         return {
           id: it.id,
+          shareId: it.share_id,
           title: it.content.title,
           vaultId: it.vault_id,
           state: it.state,
@@ -149,6 +150,7 @@ export class Client {
       if (content.Identity) {
         return {
           id: it.id,
+          shareId: it.share_id,
           title: it.content.title,
           vaultId: it.vault_id,
           state: it.state,
@@ -172,6 +174,7 @@ export class Client {
       if (content.CreditCard) {
         return {
           id: it.id,
+          shareId: it.share_id,
           title: it.content.title,
           vaultId: it.vault_id,
           state: it.state,
@@ -188,6 +191,7 @@ export class Client {
       if (content.SshKey) {
         return {
           id: it.id,
+          shareId: it.share_id,
           title: it.content.title,
           vaultId: it.vault_id,
           state: it.state,
@@ -201,6 +205,7 @@ export class Client {
       // Fallback: treat as Login with basic fields to avoid crashes
       return {
         id: it.id,
+        shareId: it.share_id,
         title: it.content.title,
         vaultId: it.vault_id,
         state: it.state,
@@ -255,7 +260,9 @@ const mapCliError = (error: unknown): PassCliError => {
     return new PassCliError("not_installed", "Proton Pass CLI is not installed or not found on disk.");
   }
 
-  if (has(/not logged in|authenticated|not authenticated|login required|please login|no session|there is no session/i)) {
+  if (
+    has(/not logged in|authenticated|not authenticated|login required|please login|no session|there is no session/i)
+  ) {
     return new PassCliError("not_authenticated", "You are not logged in to Proton Pass CLI.");
   }
 

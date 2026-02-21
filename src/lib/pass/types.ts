@@ -1,12 +1,14 @@
 export type Vault = {
   title: string;
   id: string;
+  shareId?: string;
 };
 
 // Discriminated union item types
 export type BaseItem = {
   title: string;
   id: string;
+  shareId?: string;
   vaultId: string;
   vaultTitle?: string;
   state: "Active" | "Trashed";
@@ -87,10 +89,11 @@ export const coercePassCliError = (error: unknown): PassCliError => {
 
 // -- JSON
 
-export type VaultsJson = { vaults: { name: string; vault_id: string }[] };
+export type VaultsJson = { vaults: { name: string; vault_id: string; share_id?: string }[] };
 export type ItemsJson = {
   items: {
     id: string;
+    share_id?: string;
     vault_id: string;
     state: "Active" | "Trashed";
     content: {

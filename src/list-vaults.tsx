@@ -20,6 +20,7 @@ export default function ListVaults() {
             actions={
               <ActionPanel>
                 <Action title="Open Vault" onAction={() => push(<ListVaultsItems vaultName={vault.title} />)} />
+                {vault.shareId && <Action.CopyToClipboard title="Copy Share ID" content={vault.shareId} />}
               </ActionPanel>
             }
           />

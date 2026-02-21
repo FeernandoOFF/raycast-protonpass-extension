@@ -108,6 +108,11 @@ export default function ListVaultsItems(props: { vaultName: string }) {
                         );
                       })}
                   </ActionPanel.Section>
+                  {item.shareId && (
+                    <ActionPanel.Section>
+                      <Action.CopyToClipboard title="Copy Share ID" content={item.shareId} />
+                    </ActionPanel.Section>
+                  )}
                 </ActionPanel>
               }
             />
