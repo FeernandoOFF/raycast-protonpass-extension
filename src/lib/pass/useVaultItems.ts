@@ -1,18 +1,19 @@
 import { useEffect, useMemo } from "react";
-import { useClient } from "./client";
+import { getPassClient } from "./client";
 import { Icon, showToast, Toast } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 import { originOf, useActiveTab } from "../raycast/useActiveTab";
 
 export function useVaultItems(vaultName: string | null) {
-  const client = useClient();
   const { activeOrigin } = useActiveTab();
 
   const {
     data: rawItems,
     isLoading,
     error,
+    revalidate,
   } = usePromise(async () => {
+    const client = getPassClient();
     return await client.getItems(vaultName);
   });
 
@@ -88,7 +89,7 @@ export function useVaultItems(vaultName: string | null) {
     if (error) showToast(Toast.Style.Failure, "Error", error.message || "Something went wrong");
   }, [error]);
 
-  return { items, isLoading, error };
+  return { items, isLoading, error, revalidate };
 }
 
 // -- Utilities

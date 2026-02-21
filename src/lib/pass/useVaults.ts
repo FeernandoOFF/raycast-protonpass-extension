@@ -1,12 +1,11 @@
 import { useEffect } from "react";
-import { useClient } from "./client";
+import { getPassClient } from "./client";
 import { showToast, Toast } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 
 export function useVaults() {
-  const client = useClient();
-
-  const { data, isLoading, error } = usePromise(async () => {
+  const { data, isLoading, error, revalidate } = usePromise(async () => {
+    const client = getPassClient();
     const vaults = await client.getAllVaults();
     return vaults;
   });
@@ -15,5 +14,5 @@ export function useVaults() {
     if (error) showToast(Toast.Style.Failure, "Error", error.message || "Something went wrong");
   }, [error]);
 
-  return { vaults: data, isLoading, error };
+  return { vaults: data, isLoading, error, revalidate };
 }

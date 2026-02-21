@@ -9,10 +9,10 @@
     {
       "name": "cliPath",
       "type": "textfield",
-      "title": "CLI Path",
+      "title": "Proton Pass CLI Path",
       "description": "Full path to the proton-pass CLI executable",
-      "default": "~/.local/bin/pass-cli",
-      "required": true
+      "placeholder": "/usr/local/bin/pass-cli",
+      "required": false
     }
   ],
   "platforms": [
