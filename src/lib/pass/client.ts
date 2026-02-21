@@ -1,8 +1,9 @@
-import { Item, ItemsJson, Vault, VaultsJson } from "./types";
+import { Item, ItemsJson, PassCliError, Vault, VaultsJson } from "./types";
 import { promisify } from "util";
 import { execFile } from "child_process";
 import { Cache, getPreferenceValues } from "@raycast/api";
-import { useMemo } from "react";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 
 const MAX_BUFFER_SIZE = 50 * 1024 * 1024; // 50MB
 
@@ -41,6 +42,14 @@ export class Client {
 
   // -- CLI Operations
 
+  private async execCli(args: string[], options?: { maxBuffer?: number }) {
+    try {
+      return await execFileAsync(this.cliPath, args, options);
+    } catch (error) {
+      throw mapCliError(error);
+    }
+  }
+
   private async getVaultName(vaultId: string): Promise<string | null> {
     const vaults = await this.getAllVaults();
     return vaults.find((v) => v.id === vaultId)?.title ?? null;
@@ -48,10 +57,11 @@ export class Client {
 
   async getAllVaults(forceRefresh: boolean = false): Promise<Vault[]> {
     const fetchAndRefreshVaults = async () => {
-      const { stdout, stderr } = await execFileAsync(this.cliPath, ["vault", "list", "--output=json"], {
+      const { stdout, stderr } = await this.execCli(["vault", "list", "--output=json"], {
         maxBuffer: MAX_BUFFER_SIZE,
       });
-      if (stderr) throw new Error(`Error fetching vaults: ${stderr}`);
+
+      if (stderr) throw mapCliError({ stderr });
       this.setCachedVaults(stdout);
       return stdout;
     };
@@ -68,10 +78,10 @@ export class Client {
 
   async getItems(vaultName: string | null, forceRefresh: boolean = false): Promise<Item[]> {
     const fetchAndRefreshItems = async (vaultName: string) => {
-      const { stdout, stderr } = await execFileAsync(this.cliPath, ["item", "list", vaultName, "--output=json"], {
+      const { stdout, stderr } = await this.execCli(["item", "list", vaultName, "--output=json"], {
         maxBuffer: MAX_BUFFER_SIZE,
       });
-      if (stderr) throw new Error(`Error fetching items: ${stderr}`);
+      if (stderr) throw mapCliError({ stderr });
       this.setCachedItems(stdout, vaultName);
       return stdout;
     };
@@ -198,17 +208,82 @@ export class Client {
   }
 }
 
-const { cliPath } = getPreferenceValues<ExtensionPreferences>();
+function getCliPath() {
+  const preferences = getPreferenceValues<ExtensionPreferences>();
+
+  const cliPath = [preferences.cliPath, `${homedir()}/.local/bin/pass-cli`]
+    .filter(Boolean)
+    .find((path) => (path ? existsSync(path) : false));
+
+  if (!cliPath) {
+    throw new PassCliError(
+      "not_installed",
+      "Proton Pass CLI is not found. Please set the path in the extension preferences.",
+    );
+  }
+
+  return cliPath;
+}
 // Single in-memory client
 let client: Client | null = null;
 
 export function getPassClient() {
   if (!client) {
-    client = new Client(cliPath);
+    client = new Client(getCliPath());
   }
   return client;
 }
 
-export function useClient() {
-  return useMemo(() => getPassClient(), []);
+export function resetPassCache() {
+  const cache = new Cache();
+  cache.clear();
 }
+
+const mapCliError = (error: unknown): PassCliError => {
+  if (error instanceof PassCliError) return error;
+
+  const { message, stderr, code } = extractCliErrorDetails(error);
+  const combined = [stderr, message].filter(Boolean).join("\n");
+
+  const has = (pattern: RegExp) => pattern.test(combined);
+
+  if (has(/ENOENT|not found|no such file/i)) {
+    return new PassCliError("not_installed", "Proton Pass CLI is not installed or not found on disk.");
+  }
+
+  if (has(/not logged in|not authenticated|login required|please login|no session|there is no session/i)) {
+    return new PassCliError("not_authenticated", "You are not logged in to Proton Pass CLI.");
+  }
+
+  if (has(/keyring|keychain|secret service|org\.freedesktop\.secrets/i)) {
+    return new PassCliError("keyring_error", "Proton Pass CLI could not access secure key storage.");
+  }
+
+  if (code === "ETIMEDOUT" || has(/timed out|timeout/i)) {
+    return new PassCliError("timeout", "Proton Pass CLI request timed out.");
+  }
+
+  if (has(/network|connection|ECONN|ENOTFOUND|EAI_AGAIN/i)) {
+    return new PassCliError("network_error", "Network error while contacting Proton Pass.");
+  }
+
+  return new PassCliError("unknown", combined || "An unknown error occurred.");
+};
+
+const extractCliErrorDetails = (error: unknown): { message?: string; stderr?: string; code?: string } => {
+  if (!error || typeof error !== "object") {
+    return { message: typeof error === "string" ? error : undefined };
+  }
+
+  const message = "message" in error && typeof error.message === "string" ? error.message : undefined;
+  const stderrRaw = "stderr" in error ? (error.stderr as unknown) : undefined;
+  const stderr =
+    typeof stderrRaw === "string"
+      ? stderrRaw
+      : Buffer.isBuffer(stderrRaw)
+        ? stderrRaw.toString("utf8")
+        : undefined;
+  const code = "code" in error && typeof error.code === "string" ? error.code : undefined;
+
+  return { message, stderr, code };
+};

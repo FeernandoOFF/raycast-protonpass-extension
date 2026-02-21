@@ -53,6 +53,38 @@ export type SSHKeyItem = BaseItem & {
 
 export type Item = LoginItem | IdentityItem | CreditCardItem | SSHKeyItem;
 
+// -- Errors
+
+export const PROTON_PASS_CLI_DOCS = "https://protonpass.github.io/pass-cli/";
+
+export type PassCliErrorType =
+  | "not_installed"
+  | "not_authenticated"
+  | "keyring_error"
+  | "network_error"
+  | "timeout"
+  | "unknown";
+
+export class PassCliError extends Error {
+  readonly type: PassCliErrorType;
+
+  constructor(type: PassCliErrorType, message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "PassCliError";
+    this.type = type;
+  }
+}
+
+export const isPassCliError = (error: unknown): error is PassCliError => {
+  return error instanceof PassCliError;
+};
+
+export const coercePassCliError = (error: unknown): PassCliError => {
+  if (error instanceof PassCliError) return error;
+  const message = error instanceof Error ? error.message : "An unknown error occurred.";
+  return new PassCliError("unknown", message);
+};
+
 // -- JSON
 
 export type VaultsJson = { vaults: { name: string; vault_id: string }[] };
