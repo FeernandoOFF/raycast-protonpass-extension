@@ -1,15 +1,22 @@
 import { Item, ItemTotpJson, ItemsJson, PassCliError, Vault, VaultsJson } from "./types";
 import { promisify } from "util";
-import { execFile } from "child_process";
-import { Cache, getPreferenceValues } from "@raycast/api";
+import { execFile, spawn } from "child_process";
+import { Cache, getPreferenceValues, open, showToast, Toast } from "@raycast/api";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 
 const MAX_BUFFER_SIZE = 50 * 1024 * 1024; // 50MB
+const LOGIN_URL_PATTERN = /https?:\/\/[^\s"'<>]+/i;
+const LOGIN_FAILURE_MESSAGE =
+  "Raycast couldn't complete Proton Pass login. Try again to reopen the login URL, or run 'pass-cli login' manually.";
 
 const execFileAsync = promisify(execFile);
 
 export type { Item, Vault };
+
+type ExecCliOptions = {
+  maxBuffer?: number;
+};
 
 export class Client {
   private cache = new Cache();
@@ -42,13 +49,20 @@ export class Client {
 
   // -- CLI Operations
 
-  private async execCli(args: string[], options?: { maxBuffer?: number }) {
+  private async execCli(args: string[], options: ExecCliOptions = {}) {
     try {
       const { stdout, stderr } = await execFileAsync(this.cliPath, args, options);
-      return {
+
+      const normalized = {
         stdout: typeof stdout === "string" ? stdout : stdout.toString("utf8"),
         stderr: typeof stderr === "string" ? stderr : stderr.toString("utf8"),
       };
+
+      if (normalized.stderr.trim()) {
+        throw mapCliError({ stderr: normalized.stderr, message: normalized.stdout });
+      }
+
+      return normalized;
     } catch (error) {
       throw mapCliError(error);
     }
@@ -61,18 +75,17 @@ export class Client {
 
   async getAllVaults(forceRefresh: boolean = false): Promise<Vault[]> {
     const fetchAndRefreshVaults = async () => {
-      const { stdout, stderr } = await this.execCli(["vault", "list", "--output=json"], {
-        maxBuffer: MAX_BUFFER_SIZE,
-      });
+      const { stdout } = await this.execCli(["vault", "list", "--output=json"], { maxBuffer: MAX_BUFFER_SIZE });
 
-      if (stderr) throw mapCliError({ stderr });
       this.setCachedVaults(stdout);
       return stdout;
     };
 
     const cachedVaults = this.getCachedVaults();
     if (cachedVaults && !forceRefresh) {
-      fetchAndRefreshVaults(); //Refresh cache in the background
+      void fetchAndRefreshVaults().catch((error) =>
+        showBackgroundRefreshError(error, "Failed to refresh vaults", fetchAndRefreshVaults),
+      );
       return cachedVaults;
     }
 
@@ -81,50 +94,57 @@ export class Client {
   }
 
   async getItems(vaultName: string | null, forceRefresh: boolean = false): Promise<Item[]> {
-    const fetchAndRefreshItems = async (vaultName: string) => {
-      const { stdout, stderr } = await this.execCli(["item", "list", vaultName, "--output=json"], {
+    const fetchAndRefreshItems = async (targetVaultName: string) => {
+      const { stdout } = await this.execCli(["item", "list", targetVaultName, "--output=json"], {
         maxBuffer: MAX_BUFFER_SIZE,
       });
-      if (stderr) throw mapCliError({ stderr });
-      this.setCachedItems(stdout, vaultName);
+
+      this.setCachedItems(stdout, targetVaultName);
       return stdout;
     };
 
     if (vaultName) {
       const cachedItems = await this.getCachedItems(vaultName);
       if (cachedItems != null && !forceRefresh) {
-        fetchAndRefreshItems(vaultName); // Refresh cache in the background
+        void fetchAndRefreshItems(vaultName).catch((error) =>
+          showBackgroundRefreshError(error, `Failed to refresh items from ${vaultName}`, () =>
+            fetchAndRefreshItems(vaultName),
+          ),
+        );
         return cachedItems;
       }
+
       const itemsJson = await fetchAndRefreshItems(vaultName);
       return this.parseItems(itemsJson);
-    } else {
-      const vaults = await this.getAllVaults();
-      const fetchPromises = vaults.map(async (vault) => {
-        const cachedItems = await this.getCachedItems(vault.title);
-        if (cachedItems != null && !forceRefresh) {
-          fetchAndRefreshItems(vault.title);
-          return cachedItems;
-        }
-
-        const itemsJson = await fetchAndRefreshItems(vault.title);
-        return this.parseItems(itemsJson);
-      });
-      const results = await Promise.all(fetchPromises);
-      return results.flat();
     }
+
+    const vaults = await this.getAllVaults();
+    const fetchPromises = vaults.map(async (vault) => {
+      const cachedItems = await this.getCachedItems(vault.title);
+      if (cachedItems != null && !forceRefresh) {
+        void fetchAndRefreshItems(vault.title).catch((error) =>
+          showBackgroundRefreshError(error, `Failed to refresh items from ${vault.title}`, () =>
+            fetchAndRefreshItems(vault.title),
+          ),
+        );
+        return cachedItems;
+      }
+
+      const itemsJson = await fetchAndRefreshItems(vault.title);
+      return this.parseItems(itemsJson);
+    });
+
+    const results = await Promise.all(fetchPromises);
+    return results.flat();
   }
 
   async getItemTotp(vaultShareId: string, itemId: string): Promise<string | null> {
     try {
-      const { stdout, stderr } = await this.execCli(
+      const { stdout } = await this.execCli(
         ["item", "totp", "--share-id", vaultShareId, "--item-id", itemId, "--output", "json"],
-        {
-          maxBuffer: MAX_BUFFER_SIZE,
-        },
+        { maxBuffer: MAX_BUFFER_SIZE },
       );
 
-      if (stderr) return null;
       return parseTotp(stdout);
     } catch {
       return null;
@@ -252,6 +272,7 @@ function getCliPath() {
 }
 // Single in-memory client
 let client: Client | null = null;
+let loginPromise: Promise<void> | null = null;
 
 export function getPassClient() {
   if (!client) {
@@ -263,6 +284,102 @@ export function getPassClient() {
 export function resetPassCache() {
   const cache = new Cache();
   cache.clear();
+}
+
+export async function loginToPassCli() {
+  return ensurePassCliLogin(getCliPath());
+}
+
+async function ensurePassCliLogin(cliPath: string) {
+  if (!loginPromise) {
+    loginPromise = runPassCliLogin(cliPath).finally(() => {
+      loginPromise = null;
+    });
+  }
+
+  return loginPromise;
+}
+
+async function runPassCliLogin(cliPath: string): Promise<void> {
+  const toast = await showToast({
+    style: Toast.Style.Animated,
+    title: "Opening Proton Pass Login",
+    message: "Waiting for Proton Pass to provide the login URL.",
+  });
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(cliPath, ["login"], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      let stdout = "";
+      let stderr = "";
+      let urlOpened = false;
+
+      const fail = (message: string) => {
+        if (!child.killed) child.kill();
+        reject(new PassCliError("not_authenticated", message));
+      };
+
+      const maybeOpenLoginUrl = async () => {
+        if (urlOpened) return;
+
+        const combined = `${stdout}\n${stderr}`;
+        const match = combined.match(LOGIN_URL_PATTERN);
+        if (!match) return;
+
+        urlOpened = true;
+        toast.title = "Complete Proton Pass Login";
+        toast.message = "Finish the Proton Pass sign-in flow in your browser.";
+
+        try {
+          await open(match[0]);
+        } catch {
+          fail(`${LOGIN_FAILURE_MESSAGE} URL: ${match[0]}`);
+        }
+      };
+
+      child.stdout?.on("data", (chunk: Buffer | string) => {
+        stdout += chunk.toString();
+        void maybeOpenLoginUrl();
+      });
+
+      child.stderr?.on("data", (chunk: Buffer | string) => {
+        stderr += chunk.toString();
+        void maybeOpenLoginUrl();
+      });
+
+      child.on("error", () => {
+        reject(new PassCliError("not_authenticated", LOGIN_FAILURE_MESSAGE));
+      });
+
+      child.on("close", (code) => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+
+        const details = [stderr.trim(), stdout.trim()].filter(Boolean).join("\n");
+        reject(
+          new PassCliError(
+            "not_authenticated",
+            details ? `${LOGIN_FAILURE_MESSAGE}\n\n${details}` : LOGIN_FAILURE_MESSAGE,
+          ),
+        );
+      });
+    });
+
+    toast.style = Toast.Style.Success;
+    toast.title = "Proton Pass Login Complete";
+    toast.message = "Retrying your original command.";
+  } catch (error) {
+    const passError = mapCliError(error);
+    toast.style = Toast.Style.Failure;
+    toast.title = "Proton Pass Login Failed";
+    toast.message = passError.message;
+    throw passError;
+  }
 }
 
 const mapCliError = (error: unknown): PassCliError => {
@@ -331,4 +448,35 @@ const parseTotp = (rawOutput: string): string | null => {
   } catch {
     return output;
   }
+};
+
+const showBackgroundRefreshError = (error: unknown, title: string, onAuthenticate?: () => Promise<unknown>) => {
+  const passError = mapCliError(error);
+
+  if (passError.type === "not_authenticated") {
+    void showToast({
+      style: Toast.Style.Failure,
+      title,
+      message: passError.message,
+      primaryAction: {
+        title: "Log in to Proton Pass",
+        onAction: () => {
+          void (async () => {
+            await loginToPassCli();
+
+            if (!onAuthenticate) return;
+
+            try {
+              await onAuthenticate();
+            } catch (refreshError) {
+              showBackgroundRefreshError(refreshError, title, onAuthenticate);
+            }
+          })();
+        },
+      },
+    });
+    return;
+  }
+
+  void showToast(Toast.Style.Failure, title, passError.message);
 };

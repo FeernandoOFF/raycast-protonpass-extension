@@ -1,7 +1,7 @@
 import { Action, ActionPanel, Icon, List, openExtensionPreferences } from "@raycast/api";
 import { JSX } from "react";
 import { PassCliError, PassCliErrorType, PROTON_PASS_CLI_DOCS, coercePassCliError } from "../pass/types";
-import { resetPassCache } from "../pass/client";
+import { loginToPassCli, resetPassCache } from "../pass/client";
 
 interface ErrorViewProps {
   error: unknown;
@@ -36,9 +36,10 @@ const getErrorConfig = (errorType: PassCliErrorType, error: PassCliError, contex
       return {
         icon: Icon.Lock,
         title: "Not Logged In",
-        description: "Run 'pass-cli login' in terminal to authenticate.",
+        description:
+          error.message || "Use the action below to open the Proton Pass login URL, or run 'pass-cli login' manually.",
         showDocsLink: true,
-        showRetry: false,
+        showRetry: true,
         showPreferences: false,
         showResetCache: false,
       };
@@ -90,6 +91,11 @@ export function ErrorListView({ error, onRetry, contextTitle }: ErrorViewProps) 
   const passError = coercePassCliError(error);
   const config = getErrorConfig(passError.type, passError, contextTitle);
 
+  const handleLogin = async () => {
+    await loginToPassCli();
+    onRetry?.();
+  };
+
   return (
     <List.EmptyView
       icon={config.icon}
@@ -97,6 +103,9 @@ export function ErrorListView({ error, onRetry, contextTitle }: ErrorViewProps) 
       description={config.description}
       actions={
         <ActionPanel>
+          {passError.type === "not_authenticated" && (
+            <Action title="Log in to Proton Pass" icon={Icon.Globe} onAction={handleLogin} />
+          )}
           {config.showRetry && onRetry && <Action title="Retry" icon={Icon.ArrowClockwise} onAction={onRetry} />}
           {config.showPreferences && (
             <Action icon={Icon.Gear} onAction={openExtensionPreferences} title="Open Extension Preferences" />
