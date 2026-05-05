@@ -13,6 +13,22 @@ export type BaseItem = {
   vaultTitle?: string;
   state: "Active" | "Trashed";
   totp?: string;
+  notes?: string;
+  extraFields?: ItemField[];
+  sections?: ItemSection[];
+  createTime?: number | string;
+  modifyTime?: number | string;
+};
+
+export type ItemField = {
+  title: string;
+  content: string;
+  confidential?: boolean;
+};
+
+export type ItemSection = {
+  title?: string;
+  fields: ItemField[];
 };
 
 export type LoginItem = BaseItem & {
@@ -38,6 +54,27 @@ export type IdentityItem = BaseItem & {
   organization?: string;
   street_address?: string;
   zip_or_postal_code?: string;
+  city?: string;
+  state_or_province?: string;
+  country_or_region?: string;
+  floor?: string;
+  county?: string;
+  social_security_number?: string;
+  passport_number?: string;
+  license_number?: string;
+  website?: string;
+  x_handle?: string;
+  second_phone_number?: string;
+  linkedin?: string;
+  reddit?: string;
+  facebook?: string;
+  yahoo?: string;
+  instagram?: string;
+  company?: string;
+  job_title?: string;
+  personal_website?: string;
+  work_phone_number?: string;
+  work_email?: string;
 };
 
 export type CreditCardItem = BaseItem & {
@@ -47,6 +84,7 @@ export type CreditCardItem = BaseItem & {
   number?: string;
   verification_number?: string;
   expiration_date?: string;
+  pin?: string;
 };
 
 export type SSHKeyItem = BaseItem & {
@@ -55,7 +93,32 @@ export type SSHKeyItem = BaseItem & {
   public_key?: string;
 };
 
-export type Item = LoginItem | IdentityItem | CreditCardItem | SSHKeyItem;
+export type NoteItem = BaseItem & {
+  type: "Note";
+};
+
+export type AliasItem = BaseItem & {
+  type: "Alias";
+};
+
+export type CustomItem = BaseItem & {
+  type: "Custom";
+};
+
+export type OtherItem = BaseItem & {
+  type: "Other";
+  originalType: string;
+};
+
+export type Item =
+  | LoginItem
+  | IdentityItem
+  | CreditCardItem
+  | SSHKeyItem
+  | NoteItem
+  | AliasItem
+  | CustomItem
+  | OtherItem;
 
 // -- Errors
 
@@ -98,8 +161,13 @@ export type VaultItemJson = {
   share_id: string;
   vault_id: string;
   state: "Active" | "Trashed";
+  create_time?: number | string;
+  modify_time?: number | string;
   content: {
     title: string;
+    note?: string;
+    item_uuid?: string;
+    extra_fields?: ItemFieldJson[];
     content: {
       Login?: {
         email?: string;
@@ -121,6 +189,27 @@ export type VaultItemJson = {
         organization?: string;
         street_address?: string;
         zip_or_postal_code?: string;
+        city?: string;
+        state_or_province?: string;
+        country_or_region?: string;
+        floor?: string;
+        county?: string;
+        social_security_number?: string;
+        passport_number?: string;
+        license_number?: string;
+        website?: string;
+        x_handle?: string;
+        second_phone_number?: string;
+        linkedin?: string;
+        reddit?: string;
+        facebook?: string;
+        yahoo?: string;
+        instagram?: string;
+        company?: string;
+        job_title?: string;
+        personal_website?: string;
+        work_phone_number?: string;
+        work_email?: string;
       };
       CreditCard?: {
         cardholder_name?: string;
@@ -128,13 +217,33 @@ export type VaultItemJson = {
         number?: string;
         verification_number?: string;
         expiration_date?: string;
+        pin?: string;
       };
       SshKey?: {
         private_key?: string;
         public_key?: string;
+        sections?: ItemSectionJson[];
+      };
+      Note?: null;
+      Alias?: null;
+      Custom?: {
+        sections?: ItemSectionJson[];
       };
     };
   };
+};
+
+export type ItemFieldJson = {
+  name?: string;
+  content?: {
+    Text?: string;
+    Hidden?: string;
+  };
+};
+
+export type ItemSectionJson = {
+  section_name?: string;
+  section_fields?: ItemFieldJson[];
 };
 
 export type ItemsJson = {

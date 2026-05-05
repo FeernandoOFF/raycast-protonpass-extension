@@ -1,8 +1,9 @@
-import { Action, ActionPanel, Icon, Keyboard, List } from "@raycast/api";
+import { Icon, List } from "@raycast/api";
 import { useVaultItems } from "./lib/pass/useVaultItems";
 import { useMemo, useState } from "react";
 import { useVaults } from "./lib/pass/useVaults";
 import { ErrorListView } from "./lib/components/error";
+import { ItemActionPanel } from "./lib/components/item-detail";
 
 export default function ListVaultsItems(props: { vaultName?: string | null }) {
   const { vaults } = useVaults();
@@ -56,54 +57,7 @@ export default function ListVaultsItems(props: { vaultName?: string | null }) {
               icon={item.icon}
               title={item.title}
               accessories={item.accessories}
-              actions={
-                <ActionPanel>
-                  <ActionPanel.Section>
-                    {item.clipboardElements &&
-                      item.clipboardElements.map((element, index) => {
-                        if (!element) return;
-                        const shortcut: Keyboard.Shortcut | undefined =
-                          index == 0
-                            ? { modifiers: ["cmd"], key: "c" }
-                            : index == 1
-                              ? { modifiers: ["cmd", "shift"], key: "c" }
-                              : index == 2
-                                ? { modifiers: ["cmd", "shift", "alt"], key: "c" }
-                                : index == 3
-                                  ? { modifiers: ["cmd", "shift", "alt", "ctrl"], key: "c" }
-                                  : undefined;
-
-                        return (
-                          <Action.CopyToClipboard
-                            key={index}
-                            title={`Copy ${element.title}`}
-                            content={element.content}
-                            concealed={element.confidential}
-                            shortcut={shortcut}
-                          />
-                        );
-                      })}
-                  </ActionPanel.Section>
-                  <ActionPanel.Section>
-                    {item.type == "Login" &&
-                      item.urls?.map((url, index) => {
-                        return (
-                          <Action.OpenInBrowser
-                            key={index}
-                            title={`Open ${url}`}
-                            url={url}
-                            shortcut={{ modifiers: ["cmd", "shift"], key: "o" }}
-                          />
-                        );
-                      })}
-                  </ActionPanel.Section>
-                  {item.shareId && (
-                    <ActionPanel.Section>
-                      <Action.CopyToClipboard title="Copy Share ID" content={item.shareId} />
-                    </ActionPanel.Section>
-                  )}
-                </ActionPanel>
-              }
+              actions={<ItemActionPanel item={item} showOpenDetails />}
             />
           );
         })}

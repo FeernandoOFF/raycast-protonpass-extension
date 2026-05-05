@@ -1,4 +1,15 @@
-import { Item, ItemTotpJson, ItemsJson, PassCliError, Vault, VaultsJson } from "./types";
+import {
+  Item,
+  ItemField,
+  ItemFieldJson,
+  ItemSection,
+  ItemSectionJson,
+  ItemTotpJson,
+  ItemsJson,
+  PassCliError,
+  Vault,
+  VaultsJson,
+} from "./types";
 import { promisify } from "util";
 import { execFile, spawn } from "child_process";
 import { Cache, getPreferenceValues, open, showToast, Toast } from "@raycast/api";
@@ -166,15 +177,22 @@ export class Client {
 
     const items: Item[] = parsed.items.map((it) => {
       const content = it.content.content;
+      const baseItem = {
+        id: it.id,
+        shareId: it.share_id,
+        title: it.content.title,
+        vaultId: it.vault_id,
+        state: it.state,
+        vaultTitle: vaultName || undefined,
+        notes: it.content.note || undefined,
+        extraFields: parseItemFields(it.content.extra_fields),
+        createTime: it.create_time,
+        modifyTime: it.modify_time,
+      };
 
       if (content.Login) {
         return {
-          id: it.id,
-          shareId: it.share_id,
-          title: it.content.title,
-          vaultId: it.vault_id,
-          state: it.state,
-          vaultTitle: vaultName || undefined,
+          ...baseItem,
           type: "Login",
           email: content.Login.email,
           username: content.Login.username,
@@ -186,12 +204,7 @@ export class Client {
 
       if (content.Identity) {
         return {
-          id: it.id,
-          shareId: it.share_id,
-          title: it.content.title,
-          vaultId: it.vault_id,
-          state: it.state,
-          vaultTitle: vaultName || undefined,
+          ...baseItem,
           type: "Identity",
           full_name: content.Identity.full_name,
           email: content.Identity.email,
@@ -205,53 +218,168 @@ export class Client {
           organization: content.Identity.organization,
           street_address: content.Identity.street_address,
           zip_or_postal_code: content.Identity.zip_or_postal_code,
+          city: content.Identity.city,
+          state_or_province: content.Identity.state_or_province,
+          country_or_region: content.Identity.country_or_region,
+          floor: content.Identity.floor,
+          county: content.Identity.county,
+          social_security_number: content.Identity.social_security_number,
+          passport_number: content.Identity.passport_number,
+          license_number: content.Identity.license_number,
+          website: content.Identity.website,
+          x_handle: content.Identity.x_handle,
+          second_phone_number: content.Identity.second_phone_number,
+          linkedin: content.Identity.linkedin,
+          reddit: content.Identity.reddit,
+          facebook: content.Identity.facebook,
+          yahoo: content.Identity.yahoo,
+          instagram: content.Identity.instagram,
+          company: content.Identity.company,
+          job_title: content.Identity.job_title,
+          personal_website: content.Identity.personal_website,
+          work_phone_number: content.Identity.work_phone_number,
+          work_email: content.Identity.work_email,
         };
       }
 
       if (content.CreditCard) {
         return {
-          id: it.id,
-          shareId: it.share_id,
-          title: it.content.title,
-          vaultId: it.vault_id,
-          state: it.state,
-          vaultTitle: vaultName || undefined,
+          ...baseItem,
           type: "CreditCard",
           cardholder_name: content.CreditCard.cardholder_name,
           card_type: content.CreditCard.card_type,
           number: content.CreditCard.number,
           verification_number: content.CreditCard.verification_number,
           expiration_date: content.CreditCard.expiration_date,
+          pin: content.CreditCard.pin,
         };
       }
 
       if (content.SshKey) {
         return {
-          id: it.id,
-          shareId: it.share_id,
-          title: it.content.title,
-          vaultId: it.vault_id,
-          state: it.state,
-          vaultTitle: vaultName || undefined,
+          ...baseItem,
           type: "SSHKey",
           private_key: content.SshKey.private_key,
           public_key: content.SshKey.public_key,
+          sections: parseItemSections(content.SshKey.sections),
         };
       }
 
-      // Fallback: treat as Login with basic fields to avoid crashes
+      if (Object.hasOwn(content, "Note")) {
+        return {
+          ...baseItem,
+          type: "Note",
+        };
+      }
+
+      if (Object.hasOwn(content, "Alias")) {
+        return {
+          ...baseItem,
+          type: "Alias",
+        };
+      }
+
+      if (content.Custom) {
+        return {
+          ...baseItem,
+          type: "Custom",
+          sections: parseItemSections(content.Custom.sections),
+        };
+      }
+
+      const originalType = Object.keys(content)[0] || "Unknown";
+      const originalContent = Object.values(content)[0];
+
       return {
-        id: it.id,
-        shareId: it.share_id,
-        title: it.content.title,
-        vaultId: it.vault_id,
-        state: it.state,
-        vaultTitle: vaultName || undefined,
-        type: "Login",
+        ...baseItem,
+        type: "Other",
+        originalType,
+        extraFields: mergeFields(baseItem.extraFields, parseUnknownFields(originalContent)),
+        sections: parseUnknownSections(originalContent),
       };
     });
     return items;
   }
+}
+
+function parseItemFields(fields?: ItemFieldJson[]): ItemField[] | undefined {
+  const parsed = fields
+    ?.map((field) => {
+      const title = field.name?.trim();
+      const hidden = field.content?.Hidden;
+      const text = field.content?.Text;
+
+      if (!title) return null;
+      if (typeof hidden === "string") return { title, content: hidden, confidential: true };
+      if (typeof text === "string") return { title, content: text };
+
+      return null;
+    })
+    .filter((field): field is ItemField => field != null);
+
+  return parsed && parsed.length > 0 ? parsed : undefined;
+}
+
+function parseItemSections(sections?: ItemSectionJson[]): ItemSection[] | undefined {
+  const parsed = sections
+    ?.map((section) => {
+      const fields = parseItemFields(section.section_fields);
+      if (!fields?.length) return null;
+
+      return {
+        title: section.section_name?.trim() || undefined,
+        fields,
+      };
+    })
+    .filter((section): section is ItemSection => section != null);
+
+  return parsed && parsed.length > 0 ? parsed : undefined;
+}
+
+function parseUnknownFields(content: unknown): ItemField[] | undefined {
+  if (!content || typeof content !== "object" || Array.isArray(content)) return undefined;
+
+  const fields = Object.entries(content)
+    .filter(([key]) => key !== "sections")
+    .map(([key, value]) => {
+      if (typeof value === "string") return { title: formatFieldTitle(key), content: value };
+      if (typeof value === "number" || typeof value === "boolean")
+        return { title: formatFieldTitle(key), content: String(value) };
+      if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) {
+        return { title: formatFieldTitle(key), content: value.join("\n") };
+      }
+
+      return null;
+    })
+    .filter((field): field is ItemField => field != null);
+
+  return fields.length > 0 ? fields : undefined;
+}
+
+function parseUnknownSections(content: unknown): ItemSection[] | undefined {
+  if (!content || typeof content !== "object" || Array.isArray(content) || !("sections" in content)) return undefined;
+
+  const sections = (content as { sections?: ItemSectionJson[] }).sections;
+  return parseItemSections(sections);
+}
+
+function mergeFields(primary?: ItemField[], secondary?: ItemField[]): ItemField[] | undefined {
+  const merged = [...(primary ?? [])];
+
+  for (const field of secondary ?? []) {
+    if (!merged.some((entry) => entry.title === field.title && entry.content === field.content)) {
+      merged.push(field);
+    }
+  }
+
+  return merged.length > 0 ? merged : undefined;
+}
+
+function formatFieldTitle(key: string) {
+  return key
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/^\w|\s\w/g, (match) => match.toUpperCase());
 }
 
 function getCliPath() {

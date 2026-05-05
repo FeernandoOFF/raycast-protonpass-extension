@@ -3,7 +3,14 @@ import { getPassClient } from "./client";
 import { Color, Icon, List, showToast, Toast } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 import { originOf, useActiveTab } from "../raycast/useActiveTab";
-import { LoginItem } from "./types";
+import { Item, ItemField, LoginItem } from "./types";
+
+export type DisplayItem = Item & {
+  icon: Icon;
+  isActiveOrigin: boolean;
+  accessories: List.Item.Accessory[];
+  clipboardElements: ItemField[];
+};
 
 export function useVaultItems(vaultName: string | null) {
   const { activeOrigin } = useActiveTab();
@@ -83,21 +90,17 @@ export function useVaultItems(vaultName: string | null) {
         const totp = item.totp ?? totpByItemId[item.id];
         const resolvedItem = totp != null ? { ...item, totp } : item;
 
-        let icon = Icon.Lock;
+        const icon = iconForItem(resolvedItem.type);
         let isActiveOrigin = false;
-        const clips: Clip[] = [];
+        const clips: ItemField[] = [];
         const accessories: List.Item.Accessory[] = [];
-
-        const pushIf = (key: string, value: string | undefined, confidential: boolean = false) => {
-          if (value) clips.push({ title: toTitle(key), content: value, confidential });
-        };
 
         switch (resolvedItem.type) {
           case "Login":
-            pushIf("password", resolvedItem.password, true);
-            pushIf("email", resolvedItem.email);
-            pushIf("username", resolvedItem.username);
-            pushIf("totp", resolvedItem.totp, true);
+            pushClipIf(clips, "email", resolvedItem.email);
+            pushClipIf(clips, "password", resolvedItem.password, true);
+            pushClipIf(clips, "username", resolvedItem.username);
+            pushClipIf(clips, "totp", resolvedItem.totp, true);
             isActiveOrigin = resolvedItem.urls?.some((u) => originOf(u) === activeOrigin) ?? false;
 
             if (resolvedItem.urls?.[0]) {
@@ -110,33 +113,55 @@ export function useVaultItems(vaultName: string | null) {
             }
             break;
           case "Identity":
-            icon = Icon.Person;
-            pushIf("full_name", resolvedItem.full_name);
-            pushIf("email", resolvedItem.email);
-            pushIf("phone_number", resolvedItem.phone_number);
-            pushIf("street_address", resolvedItem.street_address);
-            pushIf("zip_or_postal_code", resolvedItem.zip_or_postal_code);
-            pushIf("first_name", resolvedItem.first_name);
-            pushIf("middle_name", resolvedItem.middle_name);
-            pushIf("last_name", resolvedItem.last_name);
-            pushIf("birthdate", resolvedItem.birthdate);
-            pushIf("gender", resolvedItem.gender);
-            pushIf("organization", resolvedItem.organization);
+            pushClipIf(clips, "email", resolvedItem.email);
+            pushClipIf(clips, "full_name", resolvedItem.full_name);
+            pushClipIf(clips, "phone_number", resolvedItem.phone_number);
+            pushClipIf(clips, "street_address", resolvedItem.street_address);
+            pushClipIf(clips, "zip_or_postal_code", resolvedItem.zip_or_postal_code);
+            pushClipIf(clips, "city", resolvedItem.city);
+            pushClipIf(clips, "state_or_province", resolvedItem.state_or_province);
+            pushClipIf(clips, "country_or_region", resolvedItem.country_or_region);
+            pushClipIf(clips, "first_name", resolvedItem.first_name);
+            pushClipIf(clips, "middle_name", resolvedItem.middle_name);
+            pushClipIf(clips, "last_name", resolvedItem.last_name);
+            pushClipIf(clips, "birthdate", resolvedItem.birthdate);
+            pushClipIf(clips, "gender", resolvedItem.gender);
+            pushClipIf(clips, "organization", resolvedItem.organization);
+            pushClipIf(clips, "company", resolvedItem.company);
+            pushClipIf(clips, "job_title", resolvedItem.job_title);
+            pushClipIf(clips, "website", resolvedItem.website);
+            pushClipIf(clips, "personal_website", resolvedItem.personal_website);
+            pushClipIf(clips, "work_email", resolvedItem.work_email);
+            pushClipIf(clips, "work_phone_number", resolvedItem.work_phone_number);
+            pushClipIf(clips, "social_security_number", resolvedItem.social_security_number, true);
+            pushClipIf(clips, "passport_number", resolvedItem.passport_number, true);
+            pushClipIf(clips, "license_number", resolvedItem.license_number, true);
             break;
           case "CreditCard":
-            icon = Icon.CreditCard;
-            pushIf("number", resolvedItem.number, true);
-            pushIf("verification_number", resolvedItem.verification_number, true);
-            pushIf("expiration_date", resolvedItem.expiration_date, true);
-            pushIf("cardholder_name", resolvedItem.cardholder_name);
-            pushIf("card_type", resolvedItem.card_type);
+            pushClipIf(clips, "number", resolvedItem.number, true);
+            pushClipIf(clips, "verification_number", resolvedItem.verification_number, true);
+            pushClipIf(clips, "expiration_date", resolvedItem.expiration_date, true);
+            pushClipIf(clips, "pin", resolvedItem.pin, true);
+            pushClipIf(clips, "cardholder_name", resolvedItem.cardholder_name);
+            pushClipIf(clips, "card_type", resolvedItem.card_type);
             break;
           case "SSHKey":
-            icon = Icon.Key;
-            pushIf("public_key", resolvedItem.public_key);
-            pushIf("private_key", resolvedItem.private_key, true);
+            pushClipIf(clips, "public_key", resolvedItem.public_key);
+            pushClipIf(clips, "private_key", resolvedItem.private_key, true);
+            break;
+          case "Note":
+            pushClipIf(clips, "note", resolvedItem.notes);
+            break;
+          case "Alias":
+            pushClipIf(clips, "alias", resolvedItem.title, true);
+            break;
+          case "Custom":
+          case "Other":
             break;
         }
+
+        pushUniqueFields(clips, resolvedItem.extraFields);
+        pushUniqueSectionFields(clips, resolvedItem.sections);
 
         if (resolvedItem.totp) {
           const timerColor = remainingSeconds > 10 ? Color.Green : remainingSeconds > 5 ? Color.Yellow : Color.Red;
@@ -160,7 +185,7 @@ export function useVaultItems(vaultName: string | null) {
           isActiveOrigin,
           accessories,
           clipboardElements: clips,
-        };
+        } satisfies DisplayItem;
       })
       .sort((a, b) => {
         const aMatches =
@@ -183,11 +208,55 @@ export function useVaultItems(vaultName: string | null) {
 
 // -- Utilities
 
-type Clip = { title: string; content: string; confidential?: boolean };
+function iconForItem(type: Item["type"]): Icon {
+  switch (type) {
+    case "Identity":
+      return Icon.Person;
+    case "CreditCard":
+      return Icon.CreditCard;
+    case "SSHKey":
+      return Icon.Key;
+    case "Note":
+      return Icon.Document;
+    case "Alias":
+      return Icon.AtSymbol;
+    case "Custom":
+      return Icon.List;
+    case "Other":
+      return Icon.QuestionMark;
+    case "Login":
+    default:
+      return Icon.Lock;
+  }
+}
 
-const toTitle = (key: string) => {
+function pushClipIf(target: ItemField[], key: string, value: string | undefined, confidential: boolean = false) {
+  if (value) {
+    target.push({ title: toTitle(key), content: value, confidential });
+  }
+}
+
+function pushUniqueFields(target: ItemField[], fields?: ItemField[]) {
+  for (const field of fields ?? []) {
+    if (!target.some((entry) => entry.title === field.title && entry.content === field.content)) {
+      target.push(field);
+    }
+  }
+}
+
+function pushUniqueSectionFields(target: ItemField[], sections?: Item["sections"]) {
+  for (const section of sections ?? []) {
+    pushUniqueFields(target, section.fields);
+  }
+}
+
+export const toTitle = (key: string) => {
   // Special cases first
   switch (key) {
+    case "alias":
+      return "Alias";
+    case "note":
+      return "Note";
     case "verification_number":
       return "Verification Number";
     case "zip_or_postal_code":
@@ -214,6 +283,24 @@ const toTitle = (key: string) => {
       return "Street Address";
     case "expiration_date":
       return "Expiration Date";
+    case "state_or_province":
+      return "State/Province";
+    case "country_or_region":
+      return "Country/Region";
+    case "social_security_number":
+      return "Social Security Number";
+    case "passport_number":
+      return "Passport Number";
+    case "license_number":
+      return "License Number";
+    case "x_handle":
+      return "X Handle";
+    case "work_phone_number":
+      return "Work Phone Number";
+    case "work_email":
+      return "Work Email";
+    case "personal_website":
+      return "Personal Website";
     default:
       // Generic: snake_case or camelCase to Title Case
       return key
