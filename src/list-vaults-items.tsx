@@ -4,10 +4,11 @@ import { useMemo, useState } from "react";
 import { useVaults } from "./lib/pass/useVaults";
 import { ErrorListView } from "./lib/components/error";
 
-export default function ListVaultsItems(props: { vaultName: string }) {
+export default function ListVaultsItems(props: { vaultName?: string | null }) {
   const { vaults } = useVaults();
   const { items, isLoading, error, revalidate } = useVaultItems(props.vaultName);
   const [filter, setFilter] = useState<string>("Active");
+  const showVaultFilter = props.vaultName == null;
 
   const filteredItems = useMemo(() => {
     if (filter == "All") return items;
@@ -26,17 +27,23 @@ export default function ListVaultsItems(props: { vaultName: string }) {
       navigationTitle={`Items in ${props.vaultName ?? "All Vaults"}`}
       isLoading={isLoading}
       searchBarAccessory={
-        <List.Dropdown tooltip={"Filter items by state"} onChange={setFilter} value={filter}>
+        <List.Dropdown
+          tooltip={showVaultFilter ? "Filter items by status or vault" : "Filter items by status"}
+          onChange={setFilter}
+          value={filter}
+        >
           <List.Dropdown.Item title="All" value="All" icon={Icon.AppWindowGrid3x3} />
           <List.Dropdown.Section title="Status">
             <List.Dropdown.Item title="Active" value="Active" icon={Icon.CheckCircle} />
             <List.Dropdown.Item title="Trashed" value="Trashed" icon={Icon.Trash} />
           </List.Dropdown.Section>
-          <List.Dropdown.Section title="Vaults">
-            {vaults?.map((vault) => {
-              return <List.Dropdown.Item title={vault.title} value={vault.title} key={vault.id} icon={Icon.Folder} />;
-            })}
-          </List.Dropdown.Section>
+          {showVaultFilter && (
+            <List.Dropdown.Section title="Vaults">
+              {vaults?.map((vault) => {
+                return <List.Dropdown.Item title={vault.title} value={vault.title} key={vault.id} icon={Icon.Folder} />;
+              })}
+            </List.Dropdown.Section>
+          )}
         </List.Dropdown>
       }
     >
