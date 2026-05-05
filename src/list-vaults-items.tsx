@@ -43,30 +43,12 @@ export default function ListVaultsItems(props: { vaultName: string }) {
       {error != null && <ErrorListView error={error} onRetry={revalidate} contextTitle="load items" />}
       {filteredItems != null &&
         filteredItems.map((item) => {
-          const accessories: List.Item.Accessory[] = [];
-          if (item.type == "Login" && item.urls && item.urls.length > 0) {
-            try {
-              const url = new URL(item.urls[0]);
-              accessories.push({ text: url.hostname, tooltip: item.urls[0] });
-            } catch {
-              accessories.push({ text: item.urls[0], tooltip: item.urls[0] });
-            }
-          }
-
-          if (item.isActiveOrigin) {
-            accessories.push({ icon: Icon.Globe, tooltip: "Active website" });
-          }
-
-          if (item.vaultTitle) {
-            accessories.push({ text: item.vaultTitle, tooltip: "Vault" });
-          }
-
           return (
             <List.Item
               key={item.id}
               icon={item.icon}
               title={item.title}
-              accessories={accessories}
+              accessories={item.accessories}
               actions={
                 <ActionPanel>
                   <ActionPanel.Section>

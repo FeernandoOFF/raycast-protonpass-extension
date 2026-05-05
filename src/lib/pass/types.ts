@@ -12,6 +12,7 @@ export type BaseItem = {
   vaultId: string;
   vaultTitle?: string;
   state: "Active" | "Trashed";
+  totp?: string;
 };
 
 export type LoginItem = BaseItem & {
@@ -20,6 +21,7 @@ export type LoginItem = BaseItem & {
   username?: string;
   password?: string;
   urls?: string[];
+  totpUri?: string;
 };
 
 export type IdentityItem = BaseItem & {
@@ -89,48 +91,59 @@ export const coercePassCliError = (error: unknown): PassCliError => {
 
 // -- JSON
 
-export type VaultsJson = { vaults: { name: string; vault_id: string; share_id?: string }[] };
-export type ItemsJson = {
-  items: {
-    id: string;
-    share_id?: string;
-    vault_id: string;
-    state: "Active" | "Trashed";
+export type VaultsJson = { vaults: { name: string; vault_id: string; share_id: string }[] };
+
+export type VaultItemJson = {
+  id: string;
+  share_id: string;
+  vault_id: string;
+  state: "Active" | "Trashed";
+  content: {
+    title: string;
     content: {
-      title: string;
-      content: {
-        Login?: {
-          email?: string;
-          username?: string;
-          password?: string;
-          urls?: string[];
-        };
-        Identity?: {
-          full_name?: string;
-          email?: string;
-          phone_number?: string;
-          first_name?: string;
-          middle_name?: string;
-          last_name?: string;
-          birthdate?: string;
-          gender?: string;
-          extra_personal_details?: string[];
-          organization?: string;
-          street_address?: string;
-          zip_or_postal_code?: string;
-        };
-        CreditCard?: {
-          cardholder_name?: string;
-          card_type?: string;
-          number?: string;
-          verification_number?: string;
-          expiration_date?: string;
-        };
-        SshKey?: {
-          private_key?: string;
-          public_key?: string;
-        };
+      Login?: {
+        email?: string;
+        username?: string;
+        password?: string;
+        urls?: string[];
+        totp_uri?: string;
+      };
+      Identity?: {
+        full_name?: string;
+        email?: string;
+        phone_number?: string;
+        first_name?: string;
+        middle_name?: string;
+        last_name?: string;
+        birthdate?: string;
+        gender?: string;
+        extra_personal_details?: string[];
+        organization?: string;
+        street_address?: string;
+        zip_or_postal_code?: string;
+      };
+      CreditCard?: {
+        cardholder_name?: string;
+        card_type?: string;
+        number?: string;
+        verification_number?: string;
+        expiration_date?: string;
+      };
+      SshKey?: {
+        private_key?: string;
+        public_key?: string;
       };
     };
-  }[];
+  };
+};
+
+export type ItemsJson = {
+  items: VaultItemJson[];
+};
+
+export type ItemTotpJson = {
+  totp?: string;
+  code?: string;
+  value?: string;
+  token?: string;
 };

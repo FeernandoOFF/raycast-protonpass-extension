@@ -1,4 +1,4 @@
-import { Item, ItemsJson, PassCliError, Vault, VaultsJson } from "./types";
+import { Item, ItemTotpJson, ItemsJson, PassCliError, Vault, VaultsJson } from "./types";
 import { promisify } from "util";
 import { execFile } from "child_process";
 import { Cache, getPreferenceValues } from "@raycast/api";
@@ -115,6 +115,22 @@ export class Client {
     }
   }
 
+  async getItemTotp(vaultShareId: string, itemId: string): Promise<string | null> {
+    try {
+      const { stdout, stderr } = await this.execCli(
+        ["item", "totp", "--share-id", vaultShareId, "--item-id", itemId, "--output", "json"],
+        {
+          maxBuffer: MAX_BUFFER_SIZE,
+        },
+      );
+
+      if (stderr) return null;
+      return parseTotp(stdout);
+    } catch {
+      return null;
+    }
+  }
+
   // --- Parsers that also hydrate caches ---
 
   private parseVaults(rawJson: string): Vault[] {
@@ -144,6 +160,7 @@ export class Client {
           username: content.Login.username,
           password: content.Login.password,
           urls: content.Login.urls,
+          totpUri: content.Login.totp_uri,
         };
       }
 
@@ -293,4 +310,25 @@ const extractCliErrorDetails = (error: unknown): { message?: string; stderr?: st
   const code = "code" in error && typeof error.code === "string" ? error.code : undefined;
 
   return { message, stderr, code };
+};
+
+const parseTotp = (rawOutput: string): string | null => {
+  const output = rawOutput.trim();
+  if (!output) return null;
+
+  try {
+    const parsed = JSON.parse(output) as ItemTotpJson | string;
+
+    if (typeof parsed === "string") {
+      return parsed.trim() || null;
+    }
+
+    const totpValue = [parsed.totp, parsed.code, parsed.value, parsed.token].find(
+      (value): value is string => typeof value === "string" && value.trim().length > 0,
+    );
+
+    return totpValue?.trim() || null;
+  } catch {
+    return output;
+  }
 };
