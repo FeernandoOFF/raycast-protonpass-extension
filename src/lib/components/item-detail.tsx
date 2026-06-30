@@ -1,16 +1,47 @@
-import { Action, ActionPanel, Detail, Icon, Keyboard } from "@raycast/api";
-import type { DisplayItem } from "../pass/useVaultItems";
+import { Action, ActionPanel, Clipboard, Color, Detail, Icon, Keyboard, showToast, Toast } from "@raycast/api";
+import { getPassClient } from "../pass/client";
+import { ItemSummary } from "../pass/types";
+import { DisplayItem, formatTotpCode, useItemDetail } from "../pass/useVaultItems";
 
-export function ItemActionPanel(props: { item: DisplayItem; showOpenDetails?: boolean }) {
-  const { item, showOpenDetails = false } = props;
+// Actions for a lightweight list row. Secrets are fetched lazily only when an
+// action is invoked (or the detail is opened) — never on render.
+export function ItemSummaryActions(props: { summary: ItemSummary }) {
+  const { summary } = props;
 
   return (
     <ActionPanel>
-      {showOpenDetails && (
+      <Action.Push icon={Icon.Sidebar} title="Open Details" target={<ItemDetailView summary={summary} />} />
+      {summary.type === "Login" && summary.shareId && (
         <ActionPanel.Section>
-          <Action.Push icon={Icon.Sidebar} title="Open Details" target={<ItemDetailView item={item} />} />
+          <Action
+            icon={Icon.Key}
+            title="Copy Password"
+            shortcut={Keyboard.Shortcut.Common.Copy}
+            onAction={() => copyLoginField(summary, "password")}
+          />
+          <Action
+            icon={Icon.Clock}
+            title="Copy TOTP"
+            shortcut={{ modifiers: ["cmd"], key: "t" }}
+            onAction={() => copyTotp(summary)}
+          />
         </ActionPanel.Section>
       )}
+      {summary.shareId && (
+        <ActionPanel.Section>
+          <Action.CopyToClipboard title="Copy Share ID" content={summary.shareId} />
+        </ActionPanel.Section>
+      )}
+    </ActionPanel>
+  );
+}
+
+// Action panel for a fully-loaded item (inside the detail view).
+export function ItemActionPanel(props: { item: DisplayItem }) {
+  const { item } = props;
+
+  return (
+    <ActionPanel>
       {item.clipboardElements.length > 0 && (
         <ActionPanel.Section>
           {item.clipboardElements.map((element, index) => (
@@ -45,14 +76,27 @@ export function ItemActionPanel(props: { item: DisplayItem; showOpenDetails?: bo
   );
 }
 
-export function ItemDetailView(props: { item: DisplayItem }) {
-  const { item } = props;
+export function ItemDetailView(props: { summary: ItemSummary }) {
+  const { summary } = props;
+  const { item, isLoading, remainingSeconds } = useItemDetail(summary);
+
+  if (!item) {
+    return (
+      <Detail
+        isLoading={isLoading}
+        navigationTitle={summary.title}
+        markdown={isLoading ? `# ${summary.title}\n\nLoading…` : `# ${summary.title}\n\nUnable to load this item.`}
+      />
+    );
+  }
+
   const visibleFields = item.clipboardElements.filter(
     (field) => !(field.title === "Note" && field.content === item.notes),
   );
 
   return (
     <Detail
+      isLoading={isLoading}
       navigationTitle={item.title}
       markdown={buildMarkdown(item.title, visibleFields, item.notes)}
       metadata={
@@ -60,6 +104,15 @@ export function ItemDetailView(props: { item: DisplayItem }) {
           <Detail.Metadata.Label title="Type" text={item.type === "Other" ? item.originalType : item.type} />
           <Detail.Metadata.Label title="Status" text={item.state} />
           {item.vaultTitle && <Detail.Metadata.Label title="Vault" text={item.vaultTitle} />}
+          {item.totp && (
+            <Detail.Metadata.TagList title="TOTP">
+              <Detail.Metadata.TagList.Item
+                text={formatTotpCode(item.totp)}
+                color={remainingSeconds > 10 ? Color.Green : remainingSeconds > 5 ? Color.Yellow : Color.Red}
+              />
+              <Detail.Metadata.TagList.Item text={`${remainingSeconds}s`} />
+            </Detail.Metadata.TagList>
+          )}
           {item.createTime && <Detail.Metadata.Label title="Created" text={formatDate(item.createTime)} />}
           {item.modifyTime && <Detail.Metadata.Label title="Updated" text={formatDate(item.modifyTime)} />}
           {item.type === "Login" && item.urls && item.urls.length > 0 && <Detail.Metadata.Separator />}
@@ -72,6 +125,39 @@ export function ItemDetailView(props: { item: DisplayItem }) {
       actions={<ItemActionPanel item={item} />}
     />
   );
+}
+
+// -- Lazy copy helpers for list rows
+
+async function copyLoginField(summary: ItemSummary, field: "password") {
+  if (!summary.shareId) return;
+  try {
+    const item = await getPassClient().getItem(summary.shareId, summary.id);
+    const value = item?.type === "Login" ? item[field] : undefined;
+    if (!value) {
+      await showToast(Toast.Style.Failure, `No ${field} found`);
+      return;
+    }
+    await Clipboard.copy(value, { concealed: true });
+    await showToast(Toast.Style.Success, `Copied ${field}`);
+  } catch (error) {
+    await showToast(Toast.Style.Failure, `Failed to copy ${field}`, error instanceof Error ? error.message : undefined);
+  }
+}
+
+async function copyTotp(summary: ItemSummary) {
+  if (!summary.shareId) return;
+  try {
+    const code = await getPassClient().getItemTotp(summary.shareId, summary.id);
+    if (!code) {
+      await showToast(Toast.Style.Failure, "No TOTP found");
+      return;
+    }
+    await Clipboard.copy(code, { concealed: true });
+    await showToast(Toast.Style.Success, "Copied TOTP");
+  } catch (error) {
+    await showToast(Toast.Style.Failure, "Failed to copy TOTP", error instanceof Error ? error.message : undefined);
+  }
 }
 
 function shortcutForIndex(index: number): Keyboard.Shortcut | undefined {

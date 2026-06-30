@@ -111,26 +111,30 @@ export type OtherItem = BaseItem & {
 };
 
 export type Item =
-  | LoginItem
-  | IdentityItem
-  | CreditCardItem
-  | SSHKeyItem
-  | NoteItem
-  | AliasItem
-  | CustomItem
-  | OtherItem;
+  LoginItem | IdentityItem | CreditCardItem | SSHKeyItem | NoteItem | AliasItem | CustomItem | OtherItem;
+
+export type ItemType = Item["type"];
+
+// Lightweight item from `item list` (no secrets/fields). Full content is lazily
+// loaded per item via `item view` (Client.getItem) only when a detail is opened.
+export type ItemSummary = {
+  id: string;
+  shareId?: string;
+  vaultId: string;
+  vaultTitle?: string;
+  state: "Active" | "Trashed";
+  type: ItemType;
+  title: string;
+  createTime?: number | string;
+  modifyTime?: number | string;
+};
 
 // -- Errors
 
 export const PROTON_PASS_CLI_DOCS = "https://protonpass.github.io/pass-cli/";
 
 export type PassCliErrorType =
-  | "not_installed"
-  | "not_authenticated"
-  | "keyring_error"
-  | "network_error"
-  | "timeout"
-  | "unknown";
+  "not_installed" | "not_authenticated" | "keyring_error" | "network_error" | "timeout" | "unknown";
 
 export class PassCliError extends Error {
   readonly type: PassCliErrorType;
@@ -248,6 +252,27 @@ export type ItemSectionJson = {
 
 export type ItemsJson = {
   items: VaultItemJson[];
+};
+
+// `item list` now returns lightweight metadata only; full content comes from `item view`.
+export type ItemListEntryJson = {
+  id: string;
+  share_id: string;
+  vault_id: string;
+  state: "Active" | "Trashed";
+  item_type?: string;
+  title?: string;
+  create_time?: number | string;
+  modify_time?: number | string;
+};
+
+export type ItemListJson = {
+  items: ItemListEntryJson[];
+};
+
+// `item view` wraps the full item (old `item list` shape) under an `item` key.
+export type ItemViewJson = {
+  item: VaultItemJson;
 };
 
 export type ItemTotpJson = {

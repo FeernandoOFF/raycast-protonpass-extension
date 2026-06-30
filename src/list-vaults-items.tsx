@@ -3,7 +3,7 @@ import { useVaultItems } from "./lib/pass/useVaultItems";
 import { useMemo, useState } from "react";
 import { useVaults } from "./lib/pass/useVaults";
 import { ErrorListView } from "./lib/components/error";
-import { ItemActionPanel } from "./lib/components/item-detail";
+import { ItemSummaryActions } from "./lib/components/item-detail";
 
 const ALL_FILTER = "all";
 const STATUS_FILTER_PREFIX = "status:";
@@ -86,7 +86,7 @@ export default function ListVaultsItems(props: { vaultName?: string | null }) {
               icon={item.icon}
               title={item.title}
               accessories={item.accessories}
-              actions={<ItemActionPanel item={item} showOpenDetails />}
+              actions={<ItemSummaryActions summary={item} />}
             />
           );
         })}

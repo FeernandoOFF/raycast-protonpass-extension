@@ -1,25 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getPassClient } from "./client";
 import { Color, Icon, List, showToast, Toast } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 import { originOf, useActiveTab } from "../raycast/useActiveTab";
-import { Item, ItemField, LoginItem } from "./types";
+import { Item, ItemField, ItemSummary, ItemType } from "./types";
 
-export type DisplayItem = Item & {
+// Lightweight list row — built from `item list` metadata only (no secrets).
+export type DisplaySummary = ItemSummary & {
   icon: Icon;
-  isActiveOrigin: boolean;
   accessories: List.Item.Accessory[];
+};
+
+// Fully-loaded item used by the detail view — content fetched lazily via `item view`.
+export type DisplayItem = Item & {
   clipboardElements: ItemField[];
 };
 
 export function useVaultItems(vaultName: string | null) {
-  const { activeOrigin } = useActiveTab();
-  const [totpByItemId, setTotpByItemId] = useState<Record<string, string>>({});
-  const [remainingSeconds, setRemainingSeconds] = useState(getTotpRemainingSeconds);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   const {
-    data: rawItems,
+    data: summaries,
     isLoading,
     error,
     revalidate,
@@ -28,176 +27,18 @@ export function useVaultItems(vaultName: string | null) {
     return await client.getItems(vaultName);
   });
 
-  useEffect(() => {
-    if (!rawItems) {
-      setTotpByItemId({});
-      return;
-    }
-
-    // Remove stale entries for items that no longer exist
-    const validIds = new Set(rawItems.map((item) => item.id));
-    setTotpByItemId((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => validIds.has(id))));
-
-    const itemsWithTotp = rawItems.filter(
-      (item): item is LoginItem & { totpUri: string; shareId: string } =>
-        item.type === "Login" && !!item.totpUri && !!item.shareId,
-    );
-
-    if (itemsWithTotp.length === 0) return;
-
-    let cancelled = false;
-    const client = getPassClient();
-
-    async function fetchTotpCodes() {
-      for (const item of itemsWithTotp) {
-        if (cancelled) break;
-
-        const totp = await client.getItemTotp(item.shareId, item.id);
-        if (cancelled || !totp) continue;
-
-        setTotpByItemId((prev) => (prev[item.id] === totp ? prev : { ...prev, [item.id]: totp }));
-      }
-    }
-
-    void fetchTotpCodes();
-    return () => {
-      cancelled = true;
-    };
-  }, [rawItems]);
-
-  // Countdown timer: update every second and re-fetch TOTP codes on 30s boundary
-  useEffect(() => {
-    intervalRef.current = setInterval(() => {
-      const seconds = getTotpRemainingSeconds();
-      setRemainingSeconds(seconds);
-
-      if (seconds === 30) {
-        setTotpByItemId({});
-        revalidate();
-      }
-    }, 1000);
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
-
   const items = useMemo(() => {
-    if (!rawItems) return rawItems;
+    if (!summaries) return summaries;
 
-    return rawItems
-      .map((item) => {
-        const totp = item.totp ?? totpByItemId[item.id];
-        const resolvedItem = totp != null ? { ...item, totp } : item;
-
-        const icon = iconForItem(resolvedItem.type);
-        let isActiveOrigin = false;
-        const clips: ItemField[] = [];
-        const accessories: List.Item.Accessory[] = [];
-
-        switch (resolvedItem.type) {
-          case "Login":
-            pushClipIf(clips, "email", resolvedItem.email);
-            pushClipIf(clips, "password", resolvedItem.password, true);
-            pushClipIf(clips, "username", resolvedItem.username);
-            pushClipIf(clips, "totp", resolvedItem.totp, true);
-            isActiveOrigin = resolvedItem.urls?.some((u) => originOf(u) === activeOrigin) ?? false;
-
-            if (resolvedItem.urls?.[0]) {
-              try {
-                const url = new URL(resolvedItem.urls[0]);
-                accessories.push({ text: url.hostname, tooltip: resolvedItem.urls[0] });
-              } catch {
-                accessories.push({ text: resolvedItem.urls[0], tooltip: resolvedItem.urls[0] });
-              }
-            }
-            break;
-          case "Identity":
-            pushClipIf(clips, "email", resolvedItem.email);
-            pushClipIf(clips, "full_name", resolvedItem.full_name);
-            pushClipIf(clips, "phone_number", resolvedItem.phone_number);
-            pushClipIf(clips, "street_address", resolvedItem.street_address);
-            pushClipIf(clips, "zip_or_postal_code", resolvedItem.zip_or_postal_code);
-            pushClipIf(clips, "city", resolvedItem.city);
-            pushClipIf(clips, "state_or_province", resolvedItem.state_or_province);
-            pushClipIf(clips, "country_or_region", resolvedItem.country_or_region);
-            pushClipIf(clips, "first_name", resolvedItem.first_name);
-            pushClipIf(clips, "middle_name", resolvedItem.middle_name);
-            pushClipIf(clips, "last_name", resolvedItem.last_name);
-            pushClipIf(clips, "birthdate", resolvedItem.birthdate);
-            pushClipIf(clips, "gender", resolvedItem.gender);
-            pushClipIf(clips, "organization", resolvedItem.organization);
-            pushClipIf(clips, "company", resolvedItem.company);
-            pushClipIf(clips, "job_title", resolvedItem.job_title);
-            pushClipIf(clips, "website", resolvedItem.website);
-            pushClipIf(clips, "personal_website", resolvedItem.personal_website);
-            pushClipIf(clips, "work_email", resolvedItem.work_email);
-            pushClipIf(clips, "work_phone_number", resolvedItem.work_phone_number);
-            pushClipIf(clips, "social_security_number", resolvedItem.social_security_number, true);
-            pushClipIf(clips, "passport_number", resolvedItem.passport_number, true);
-            pushClipIf(clips, "license_number", resolvedItem.license_number, true);
-            break;
-          case "CreditCard":
-            pushClipIf(clips, "number", resolvedItem.number, true);
-            pushClipIf(clips, "verification_number", resolvedItem.verification_number, true);
-            pushClipIf(clips, "expiration_date", resolvedItem.expiration_date, true);
-            pushClipIf(clips, "pin", resolvedItem.pin, true);
-            pushClipIf(clips, "cardholder_name", resolvedItem.cardholder_name);
-            pushClipIf(clips, "card_type", resolvedItem.card_type);
-            break;
-          case "SSHKey":
-            pushClipIf(clips, "public_key", resolvedItem.public_key);
-            pushClipIf(clips, "private_key", resolvedItem.private_key, true);
-            break;
-          case "Note":
-            pushClipIf(clips, "note", resolvedItem.notes);
-            break;
-          case "Alias":
-            pushClipIf(clips, "alias", resolvedItem.title, true);
-            break;
-          case "Custom":
-          case "Other":
-            break;
-        }
-
-        pushUniqueFields(clips, resolvedItem.extraFields);
-        pushUniqueSectionFields(clips, resolvedItem.sections);
-
-        if (resolvedItem.totp) {
-          const timerColor = remainingSeconds > 10 ? Color.Green : remainingSeconds > 5 ? Color.Yellow : Color.Red;
-          accessories.unshift(
-            { tag: { value: formatTotpCode(resolvedItem.totp), color: timerColor }, tooltip: "TOTP" },
-            { text: `${remainingSeconds}s`, icon: Icon.Clock },
-          );
-        }
-
-        if (isActiveOrigin) {
-          accessories.push({ icon: Icon.Globe, tooltip: "Active website" });
-        }
-
-        if (resolvedItem.vaultTitle) {
-          accessories.push({ text: resolvedItem.vaultTitle, tooltip: "Vault" });
-        }
-
-        return {
-          ...resolvedItem,
-          icon,
-          isActiveOrigin,
-          accessories,
-          clipboardElements: clips,
-        } satisfies DisplayItem;
-      })
-      .sort((a, b) => {
-        const aMatches =
-          a.type === "Login" && Array.isArray(a.urls) && a.urls.some((u) => originOf(u) === activeOrigin);
-
-        const bMatches =
-          b.type === "Login" && Array.isArray(b.urls) && b.urls.some((u) => originOf(u) === activeOrigin);
-
-        if (aMatches === bMatches) return 0;
-        return aMatches ? -1 : 1;
-      });
-  }, [rawItems, activeOrigin, totpByItemId, remainingSeconds]);
+    return summaries.map(
+      (summary) =>
+        ({
+          ...summary,
+          icon: iconForItem(summary.type),
+          accessories: buildSummaryAccessories(summary),
+        }) satisfies DisplaySummary,
+    );
+  }, [summaries]);
 
   useEffect(() => {
     if (error) showToast(Toast.Style.Failure, "Error", error.message || "Something went wrong");
@@ -206,9 +47,217 @@ export function useVaultItems(vaultName: string | null) {
   return { items, isLoading, error, revalidate };
 }
 
+// Lazily loads a single item's full content (and live TOTP) when its detail is opened.
+export function useItemDetail(summary: ItemSummary) {
+  const { activeOrigin } = useActiveTab();
+  const [totp, setTotp] = useState<string | undefined>();
+  const [remainingSeconds, setRemainingSeconds] = useState(getTotpRemainingSeconds);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const {
+    data: rawItem,
+    isLoading,
+    error,
+    revalidate,
+  } = usePromise(async () => {
+    if (!summary.shareId) return null;
+    return await getPassClient().getItem(summary.shareId, summary.id);
+  });
+
+  // Fetch TOTP once the login item is loaded.
+  useEffect(() => {
+    setTotp(undefined);
+    if (!rawItem || rawItem.type !== "Login" || !rawItem.totpUri || !rawItem.shareId) return;
+
+    let cancelled = false;
+    void getPassClient()
+      .getItemTotp(rawItem.shareId, rawItem.id)
+      .then((code) => {
+        if (!cancelled && code) setTotp(code);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rawItem]);
+
+  // Countdown timer; refetch TOTP on each 30s boundary.
+  useEffect(() => {
+    intervalRef.current = setInterval(() => {
+      const seconds = getTotpRemainingSeconds();
+      setRemainingSeconds(seconds);
+
+      if (seconds === 30 && rawItem?.type === "Login" && rawItem.totpUri && rawItem.shareId) {
+        void getPassClient()
+          .getItemTotp(rawItem.shareId, rawItem.id)
+          .then((code) => code && setTotp(code));
+      }
+    }, 1000);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [rawItem]);
+
+  const item = useMemo<DisplayItem | null>(() => {
+    if (!rawItem) return null;
+
+    const resolved = totp != null ? { ...rawItem, totp } : rawItem;
+    return { ...resolved, clipboardElements: buildClipboardElements(resolved) } satisfies DisplayItem;
+  }, [rawItem, totp]);
+
+  const isActiveOrigin = item?.type === "Login" && (item.urls?.some((u) => originOf(u) === activeOrigin) ?? false);
+
+  useEffect(() => {
+    if (error) showToast(Toast.Style.Failure, "Failed to load item", error.message || "Something went wrong");
+  }, [error]);
+
+  return { item, isLoading, error, remainingSeconds, isActiveOrigin, revalidate };
+}
+
+// Prefetches the highlighted list row's content (and live TOTP) so the action panel
+// is fully populated and the detail view opens instantly. Wire up to List.onSelectionChange.
+export function useItemPrefetch(items?: DisplaySummary[]) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [contentById, setContentById] = useState<Record<string, DisplayItem | null>>({});
+  const [totpById, setTotpById] = useState<Record<string, string>>({});
+  const [remainingSeconds, setRemainingSeconds] = useState(getTotpRemainingSeconds);
+  const inflight = useRef<Set<string>>(new Set());
+
+  const fetchTotp = useCallback(async (item: DisplayItem) => {
+    if (item.type !== "Login" || !item.totpUri || !item.shareId) return;
+    const code = await getPassClient().getItemTotp(item.shareId, item.id);
+    if (code) setTotpById((prev) => (prev[item.id] === code ? prev : { ...prev, [item.id]: code }));
+  }, []);
+
+  const prefetch = useCallback(
+    async (summary: ItemSummary) => {
+      if (!summary.shareId || contentById[summary.id] !== undefined || inflight.current.has(summary.id)) return;
+
+      inflight.current.add(summary.id);
+      try {
+        const full = await getPassClient().getItem(summary.shareId, summary.id);
+        const display = full ? ({ ...full, clipboardElements: buildClipboardElements(full) } satisfies DisplayItem) : null;
+        setContentById((prev) => ({ ...prev, [summary.id]: display }));
+        if (display) void fetchTotp(display);
+      } catch {
+        // best-effort prefetch; the detail view surfaces real errors on open
+      } finally {
+        inflight.current.delete(summary.id);
+      }
+    },
+    [contentById, fetchTotp],
+  );
+
+  const onSelectionChange = useCallback(
+    (id: string | null) => {
+      setSelectedId(id);
+      const summary = id ? items?.find((item) => item.id === id) : undefined;
+      if (summary) void prefetch(summary);
+    },
+    [items, prefetch],
+  );
+
+  // Countdown timer; refresh the selected login's TOTP on each 30s boundary.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const seconds = getTotpRemainingSeconds();
+      setRemainingSeconds(seconds);
+
+      if (seconds === 30 && selectedId) {
+        const content = contentById[selectedId];
+        if (content) void fetchTotp(content);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [selectedId, contentById, fetchTotp]);
+
+  return { onSelectionChange, contentById, totpById, remainingSeconds };
+}
+
+// -- Builders
+
+function buildSummaryAccessories(summary: ItemSummary): List.Item.Accessory[] {
+  const accessories: List.Item.Accessory[] = [];
+
+  if (summary.state === "Trashed") {
+    accessories.push({ icon: { source: Icon.Trash, tintColor: Color.SecondaryText }, tooltip: "Trashed" });
+  }
+  if (summary.vaultTitle) {
+    accessories.push({ text: summary.vaultTitle, tooltip: "Vault" });
+  }
+
+  return accessories;
+}
+
+function buildClipboardElements(item: Item): ItemField[] {
+  const clips: ItemField[] = [];
+
+  switch (item.type) {
+    case "Login":
+      pushClipIf(clips, "email", item.email);
+      pushClipIf(clips, "password", item.password, true);
+      pushClipIf(clips, "username", item.username);
+      pushClipIf(clips, "totp", item.totp, true);
+      break;
+    case "Identity":
+      pushClipIf(clips, "email", item.email);
+      pushClipIf(clips, "full_name", item.full_name);
+      pushClipIf(clips, "phone_number", item.phone_number);
+      pushClipIf(clips, "street_address", item.street_address);
+      pushClipIf(clips, "zip_or_postal_code", item.zip_or_postal_code);
+      pushClipIf(clips, "city", item.city);
+      pushClipIf(clips, "state_or_province", item.state_or_province);
+      pushClipIf(clips, "country_or_region", item.country_or_region);
+      pushClipIf(clips, "first_name", item.first_name);
+      pushClipIf(clips, "middle_name", item.middle_name);
+      pushClipIf(clips, "last_name", item.last_name);
+      pushClipIf(clips, "birthdate", item.birthdate);
+      pushClipIf(clips, "gender", item.gender);
+      pushClipIf(clips, "organization", item.organization);
+      pushClipIf(clips, "company", item.company);
+      pushClipIf(clips, "job_title", item.job_title);
+      pushClipIf(clips, "website", item.website);
+      pushClipIf(clips, "personal_website", item.personal_website);
+      pushClipIf(clips, "work_email", item.work_email);
+      pushClipIf(clips, "work_phone_number", item.work_phone_number);
+      pushClipIf(clips, "social_security_number", item.social_security_number, true);
+      pushClipIf(clips, "passport_number", item.passport_number, true);
+      pushClipIf(clips, "license_number", item.license_number, true);
+      break;
+    case "CreditCard":
+      pushClipIf(clips, "number", item.number, true);
+      pushClipIf(clips, "verification_number", item.verification_number, true);
+      pushClipIf(clips, "expiration_date", item.expiration_date, true);
+      pushClipIf(clips, "pin", item.pin, true);
+      pushClipIf(clips, "cardholder_name", item.cardholder_name);
+      pushClipIf(clips, "card_type", item.card_type);
+      break;
+    case "SSHKey":
+      pushClipIf(clips, "public_key", item.public_key);
+      pushClipIf(clips, "private_key", item.private_key, true);
+      break;
+    case "Note":
+      pushClipIf(clips, "note", item.notes);
+      break;
+    case "Alias":
+      pushClipIf(clips, "alias", item.title, true);
+      break;
+    case "Custom":
+    case "Other":
+      break;
+  }
+
+  pushUniqueFields(clips, item.extraFields);
+  pushUniqueSectionFields(clips, item.sections);
+
+  return clips;
+}
+
 // -- Utilities
 
-function iconForItem(type: Item["type"]): Icon {
+function iconForItem(type: ItemType): Icon {
   switch (type) {
     case "Identity":
       return Icon.Person;
@@ -315,6 +364,6 @@ function getTotpRemainingSeconds(): number {
   return 30 - (now % 30);
 }
 
-function formatTotpCode(code: string): string {
+export function formatTotpCode(code: string): string {
   return code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
 }

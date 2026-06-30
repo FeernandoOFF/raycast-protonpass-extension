@@ -2,10 +2,14 @@ import {
   Item,
   ItemField,
   ItemFieldJson,
+  ItemListJson,
   ItemSection,
   ItemSectionJson,
+  ItemSummary,
+  ItemType,
   ItemTotpJson,
-  ItemsJson,
+  ItemViewJson,
+  VaultItemJson,
   PassCliError,
   Vault,
   VaultsJson,
@@ -48,10 +52,10 @@ export class Client {
     this.cache.set(Client.VAULTS_CACHE_KEY, rawJson);
   }
 
-  private async getCachedItems(vaultName: string): Promise<Item[] | null> {
+  private async getCachedItems(vaultName: string): Promise<ItemSummary[] | null> {
     const cachedItems = this.cache.get(`${Client.ITEMS_CACHE_KEY}:${vaultName}`);
     if (!cachedItems) return null;
-    return await this.parseItems(cachedItems);
+    return this.parseItemSummaries(cachedItems);
   }
 
   private setCachedItems(rawJson: string, vaultName: string) {
@@ -84,6 +88,10 @@ export class Client {
     return vaults.find((v) => v.id === vaultId)?.title ?? null;
   }
 
+  private getCachedVaultName(vaultId: string): string | null {
+    return this.getCachedVaults()?.find((v) => v.id === vaultId)?.title ?? null;
+  }
+
   async getAllVaults(forceRefresh: boolean = false): Promise<Vault[]> {
     const fetchAndRefreshVaults = async () => {
       const { stdout } = await this.execCli(["vault", "list", "--output=json"], { maxBuffer: MAX_BUFFER_SIZE });
@@ -104,12 +112,13 @@ export class Client {
     return this.parseVaults(vaultsJson);
   }
 
-  async getItems(vaultName: string | null, forceRefresh: boolean = false): Promise<Item[]> {
+  // Lightweight: one `item list` call per vault. Full content is loaded lazily per item
+  // via getItem() only when a detail is opened — keeps large vaults fast.
+  async getItems(vaultName: string | null, forceRefresh: boolean = false): Promise<ItemSummary[]> {
     const fetchAndRefreshItems = async (targetVaultName: string) => {
       const { stdout } = await this.execCli(["item", "list", targetVaultName, "--output=json"], {
         maxBuffer: MAX_BUFFER_SIZE,
       });
-
       this.setCachedItems(stdout, targetVaultName);
       return stdout;
     };
@@ -126,7 +135,7 @@ export class Client {
       }
 
       const itemsJson = await fetchAndRefreshItems(vaultName);
-      return this.parseItems(itemsJson);
+      return this.parseItemSummaries(itemsJson);
     }
 
     const vaults = await this.getAllVaults();
@@ -142,17 +151,46 @@ export class Client {
       }
 
       const itemsJson = await fetchAndRefreshItems(vault.title);
-      return this.parseItems(itemsJson);
+      return this.parseItemSummaries(itemsJson);
     });
 
     const results = await Promise.all(fetchPromises);
     return results.flat();
   }
 
+  // Lazily load a single item's full content via `item view`, cached per item.
+  async getItem(shareId: string, itemId: string, forceRefresh: boolean = false): Promise<Item | null> {
+    const cacheKey = `item:${shareId}:${itemId}`;
+
+    if (!forceRefresh) {
+      const cached = this.cache.get(cacheKey);
+      if (cached) {
+        try {
+          return await this.parseItem(JSON.parse(cached) as VaultItemJson);
+        } catch {
+          // fall through to refetch on malformed cache
+        }
+      }
+    }
+
+    // Use `=` form: item/share IDs are URL-safe base64 and may start with `-`,
+    // which the CLI's arg parser would otherwise treat as a flag.
+    const { stdout } = await this.execCli(
+      ["item", "view", `--share-id=${shareId}`, `--item-id=${itemId}`, "--output", "json"],
+      { maxBuffer: MAX_BUFFER_SIZE },
+    );
+
+    const itemJson = (JSON.parse(stdout) as ItemViewJson).item;
+    if (!itemJson) return null;
+
+    this.cache.set(cacheKey, JSON.stringify(itemJson));
+    return await this.parseItem(itemJson);
+  }
+
   async getItemTotp(vaultShareId: string, itemId: string): Promise<string | null> {
     try {
       const { stdout } = await this.execCli(
-        ["item", "totp", "--share-id", vaultShareId, "--item-id", itemId, "--output", "json"],
+        ["item", "totp", `--share-id=${vaultShareId}`, `--item-id=${itemId}`, "--output", "json"],
         { maxBuffer: MAX_BUFFER_SIZE },
       );
 
@@ -170,26 +208,40 @@ export class Client {
     return vaults;
   }
 
-  private async parseItems(rawJson: string): Promise<Item[]> {
-    const parsed = JSON.parse(rawJson) as ItemsJson;
-    if (!parsed.items || parsed.items.length === 0) return [];
-    const vaultName = await this.getVaultName(parsed.items[0].vault_id);
+  private parseItemSummaries(rawJson: string): ItemSummary[] {
+    const parsed = JSON.parse(rawJson) as ItemListJson;
+    if (!parsed.items) return [];
 
-    const items: Item[] = parsed.items.map((it) => {
-      const content = it.content.content;
-      const baseItem = {
-        id: it.id,
-        shareId: it.share_id,
-        title: it.content.title,
-        vaultId: it.vault_id,
-        state: it.state,
-        vaultTitle: vaultName || undefined,
-        notes: it.content.note || undefined,
-        extraFields: parseItemFields(it.content.extra_fields),
-        createTime: it.create_time,
-        modifyTime: it.modify_time,
-      };
+    return parsed.items.map((entry) => ({
+      id: entry.id,
+      shareId: entry.share_id,
+      vaultId: entry.vault_id,
+      vaultTitle: this.getCachedVaultName(entry.vault_id) ?? undefined,
+      state: entry.state,
+      type: mapItemType(entry.item_type),
+      title: entry.title ?? "",
+      createTime: entry.create_time,
+      modifyTime: entry.modify_time,
+    }));
+  }
 
+  private async parseItem(it: VaultItemJson): Promise<Item> {
+    const vaultName = await this.getVaultName(it.vault_id);
+    const content = it.content.content;
+    const baseItem = {
+      id: it.id,
+      shareId: it.share_id,
+      title: it.content.title,
+      vaultId: it.vault_id,
+      state: it.state,
+      vaultTitle: vaultName || undefined,
+      notes: it.content.note || undefined,
+      extraFields: parseItemFields(it.content.extra_fields),
+      createTime: it.create_time,
+      modifyTime: it.modify_time,
+    };
+
+    {
       if (content.Login) {
         return {
           ...baseItem,
@@ -297,8 +349,28 @@ export class Client {
         extraFields: mergeFields(baseItem.extraFields, parseUnknownFields(originalContent)),
         sections: parseUnknownSections(originalContent),
       };
-    });
-    return items;
+    }
+  }
+}
+
+function mapItemType(itemType?: string): ItemType {
+  switch (itemType) {
+    case "login":
+      return "Login";
+    case "identity":
+      return "Identity";
+    case "credit_card":
+      return "CreditCard";
+    case "ssh_key":
+      return "SSHKey";
+    case "note":
+      return "Note";
+    case "alias":
+      return "Alias";
+    case "custom":
+      return "Custom";
+    default:
+      return "Other";
   }
 }
 
