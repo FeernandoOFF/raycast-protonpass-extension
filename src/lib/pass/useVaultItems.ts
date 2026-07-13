@@ -117,12 +117,16 @@ export function useItemDetail(summary: ItemSummary) {
 
 // Prefetches the highlighted list row's content (and live TOTP) so the action panel
 // is fully populated and the detail view opens instantly. Wire up to List.onSelectionChange.
+const PREFETCH_DEBOUNCE_MS = 250;
+
 export function useItemPrefetch(items?: DisplaySummary[]) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [contentById, setContentById] = useState<Record<string, DisplayItem | null>>({});
   const [totpById, setTotpById] = useState<Record<string, string>>({});
   const [remainingSeconds, setRemainingSeconds] = useState(getTotpRemainingSeconds);
+  const [knownTotpIds, setKnownTotpIds] = useState<Set<string>>(() => new Set(getPassClient().getTotpItemIds()));
   const inflight = useRef<Set<string>>(new Set());
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchTotp = useCallback(async (item: DisplayItem) => {
     if (item.type !== "Login" || !item.totpUri || !item.shareId) return;
@@ -137,9 +141,14 @@ export function useItemPrefetch(items?: DisplaySummary[]) {
       inflight.current.add(summary.id);
       try {
         const full = await getPassClient().getItem(summary.shareId, summary.id);
-        const display = full ? ({ ...full, clipboardElements: buildClipboardElements(full) } satisfies DisplayItem) : null;
+        const display = full
+          ? ({ ...full, clipboardElements: buildClipboardElements(full) } satisfies DisplayItem)
+          : null;
         setContentById((prev) => ({ ...prev, [summary.id]: display }));
-        if (display) void fetchTotp(display);
+        if (display?.type === "Login" && display.totpUri) {
+          setKnownTotpIds((prev) => (prev.has(summary.id) ? prev : new Set(prev).add(summary.id)));
+          void fetchTotp(display);
+        }
       } catch {
         // best-effort prefetch; the detail view surfaces real errors on open
       } finally {
@@ -149,14 +158,22 @@ export function useItemPrefetch(items?: DisplaySummary[]) {
     [contentById, fetchTotp],
   );
 
+  // Debounce prefetch so arrowing quickly through the list doesn't fire a `item view`
+  // per row — only the row the selection settles on is fetched.
   const onSelectionChange = useCallback(
     (id: string | null) => {
       setSelectedId(id);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+
       const summary = id ? items?.find((item) => item.id === id) : undefined;
-      if (summary) void prefetch(summary);
+      if (!summary) return;
+
+      debounceRef.current = setTimeout(() => void prefetch(summary), PREFETCH_DEBOUNCE_MS);
     },
     [items, prefetch],
   );
+
+  useEffect(() => () => void (debounceRef.current && clearTimeout(debounceRef.current)), []);
 
   // Countdown timer; refresh the selected login's TOTP on each 30s boundary.
   useEffect(() => {
@@ -173,10 +190,17 @@ export function useItemPrefetch(items?: DisplaySummary[]) {
     return () => clearInterval(interval);
   }, [selectedId, contentById, fetchTotp]);
 
-  return { onSelectionChange, contentById, totpById, remainingSeconds };
+  return { onSelectionChange, selectedId, contentById, totpById, remainingSeconds, knownTotpIds };
 }
 
 // -- Builders
+
+// Merge a live TOTP code into a loaded login so its clipboard actions include it.
+export function withTotp(item: DisplayItem, totp?: string): DisplayItem {
+  if (!totp || item.type !== "Login") return item;
+  const resolved = { ...item, totp };
+  return { ...resolved, clipboardElements: buildClipboardElements(resolved) };
+}
 
 function buildSummaryAccessories(summary: ItemSummary): List.Item.Accessory[] {
   const accessories: List.Item.Accessory[] = [];

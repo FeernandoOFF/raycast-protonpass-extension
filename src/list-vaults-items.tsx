@@ -1,5 +1,5 @@
-import { Icon, List } from "@raycast/api";
-import { useVaultItems } from "./lib/pass/useVaultItems";
+import { Color, Icon, List } from "@raycast/api";
+import { formatTotpCode, useItemPrefetch, useVaultItems } from "./lib/pass/useVaultItems";
 import { useMemo, useState } from "react";
 import { useVaults } from "./lib/pass/useVaults";
 import { ErrorListView } from "./lib/components/error";
@@ -13,6 +13,9 @@ const VAULT_FILTER_PREFIX = "vault:";
 export default function ListVaultsItems(props: { vaultName?: string | null }) {
   const { vaults } = useVaults();
   const { items, isLoading, error, revalidate } = useVaultItems(props.vaultName);
+  const { onSelectionChange, selectedId, contentById, totpById, remainingSeconds, knownTotpIds } = useItemPrefetch(
+    items ?? undefined,
+  );
   const [filter, setFilter] = useState<string>(`${STATUS_FILTER_PREFIX}Active`);
   const showVaultFilter = props.vaultName == null;
 
@@ -39,6 +42,7 @@ export default function ListVaultsItems(props: { vaultName?: string | null }) {
       searchBarPlaceholder={`Search items in ${props.vaultName ?? "All Vaults"}...`}
       navigationTitle={`Items in ${props.vaultName ?? "All Vaults"}`}
       isLoading={isLoading}
+      onSelectionChange={onSelectionChange}
       searchBarAccessory={
         <List.Dropdown
           tooltip={showVaultFilter ? "Filter items by status, type, or vault" : "Filter items by status or type"}
@@ -80,13 +84,29 @@ export default function ListVaultsItems(props: { vaultName?: string | null }) {
       {error != null && <ErrorListView error={error} onRetry={revalidate} contextTitle="load items" />}
       {filteredItems != null &&
         filteredItems.map((item) => {
+          const totp = totpById[item.id];
+          const totpAccessory: List.Item.Accessory | null =
+            totp && selectedId === item.id
+              ? {
+                  tag: {
+                    value: formatTotpCode(totp),
+                    color: remainingSeconds > 10 ? Color.Green : remainingSeconds > 5 ? Color.Yellow : Color.Red,
+                  },
+                  tooltip: `TOTP · ${remainingSeconds}s`,
+                }
+              : knownTotpIds.has(item.id)
+                ? { icon: Icon.Clock, tooltip: "Has TOTP" }
+                : null;
+          const accessories = totpAccessory ? [totpAccessory, ...item.accessories] : item.accessories;
+
           return (
             <List.Item
               key={item.id}
+              id={item.id}
               icon={item.icon}
               title={item.title}
-              accessories={item.accessories}
-              actions={<ItemSummaryActions summary={item} />}
+              accessories={accessories}
+              actions={<ItemSummaryActions summary={item} content={contentById[item.id]} totp={totp} />}
             />
           );
         })}

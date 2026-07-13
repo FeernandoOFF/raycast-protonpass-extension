@@ -1,12 +1,16 @@
 import { Action, ActionPanel, Clipboard, Color, Detail, Icon, Keyboard, showToast, Toast } from "@raycast/api";
 import { getPassClient } from "../pass/client";
 import { ItemSummary } from "../pass/types";
-import { DisplayItem, formatTotpCode, useItemDetail } from "../pass/useVaultItems";
+import { DisplayItem, formatTotpCode, useItemDetail, withTotp } from "../pass/useVaultItems";
 
-// Actions for a lightweight list row. Secrets are fetched lazily only when an
-// action is invoked (or the detail is opened) — never on render.
-export function ItemSummaryActions(props: { summary: ItemSummary }) {
-  const { summary } = props;
+// Actions for a list row. When the row's content has been prefetched (on hover),
+// render the full copy menu; otherwise fall back to lazy-on-invoke copy actions.
+export function ItemSummaryActions(props: { summary: ItemSummary; content?: DisplayItem | null; totp?: string }) {
+  const { summary, content, totp } = props;
+
+  if (content) {
+    return <ItemActionPanel item={withTotp(content, totp)} summary={summary} />;
+  }
 
   return (
     <ActionPanel>
@@ -36,12 +40,18 @@ export function ItemSummaryActions(props: { summary: ItemSummary }) {
   );
 }
 
-// Action panel for a fully-loaded item (inside the detail view).
-export function ItemActionPanel(props: { item: DisplayItem }) {
-  const { item } = props;
+// Action panel for a fully-loaded item. Used by the detail view and by prefetched
+// list rows; pass `summary` to surface an "Open Details" push as the primary action.
+export function ItemActionPanel(props: { item: DisplayItem; summary?: ItemSummary }) {
+  const { item, summary } = props;
 
   return (
     <ActionPanel>
+      {summary && (
+        <ActionPanel.Section>
+          <Action.Push icon={Icon.Sidebar} title="Open Details" target={<ItemDetailView summary={summary} />} />
+        </ActionPanel.Section>
+      )}
       {item.clipboardElements.length > 0 && (
         <ActionPanel.Section>
           {item.clipboardElements.map((element, index) => (

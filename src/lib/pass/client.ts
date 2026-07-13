@@ -37,6 +37,7 @@ export class Client {
   private cache = new Cache();
   private static VAULTS_CACHE_KEY = "vaults";
   private static ITEMS_CACHE_KEY = "items";
+  private static TOTP_ITEMS_CACHE_KEY = "totp-items";
 
   constructor(private cliPath: string) {}
 
@@ -56,6 +57,26 @@ export class Client {
     const cachedItems = this.cache.get(`${Client.ITEMS_CACHE_KEY}:${vaultName}`);
     if (!cachedItems) return null;
     return this.parseItemSummaries(cachedItems);
+  }
+
+  // Item ids known to have TOTP, learned from prior `item view` calls. Lets the list
+  // mark rows before their content is (re)fetched on hover.
+  getTotpItemIds(): string[] {
+    const raw = this.cache.get(Client.TOTP_ITEMS_CACHE_KEY);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as string[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private noteTotp(itemId: string, hasTotp: boolean) {
+    const ids = new Set(this.getTotpItemIds());
+    const changed = hasTotp ? !ids.has(itemId) : ids.delete(itemId);
+    if (hasTotp) ids.add(itemId);
+    if (changed) this.cache.set(Client.TOTP_ITEMS_CACHE_KEY, JSON.stringify([...ids]));
   }
 
   private setCachedItems(rawJson: string, vaultName: string) {
@@ -166,7 +187,9 @@ export class Client {
       const cached = this.cache.get(cacheKey);
       if (cached) {
         try {
-          return await this.parseItem(JSON.parse(cached) as VaultItemJson);
+          const cachedJson = JSON.parse(cached) as VaultItemJson;
+          this.noteTotp(itemId, Boolean(cachedJson.content.content.Login?.totp_uri));
+          return await this.parseItem(cachedJson);
         } catch {
           // fall through to refetch on malformed cache
         }
@@ -184,6 +207,7 @@ export class Client {
     if (!itemJson) return null;
 
     this.cache.set(cacheKey, JSON.stringify(itemJson));
+    this.noteTotp(itemId, Boolean(itemJson.content.content.Login?.totp_uri));
     return await this.parseItem(itemJson);
   }
 
